@@ -55,6 +55,50 @@ class TranscriptCleanupTest {
     }
 
     @Test
+    fun rejectsALetterWrittenAroundTheTranscript() {
+        // The failure this guard exists for: a long dictation reads like a
+        // request, so the model composes rather than tidies. It keeps most of
+        // the original words, so retention alone would let it through.
+        val original = "hey so i wanted to check in about the report you sent last " +
+            "week i think the numbers in section three look off and we should " +
+            "probably go over them before the meeting"
+        val candidate = """
+            Dear Colleague,
+
+            I hope this message finds you well. I wanted to check in regarding
+            the report you sent last week. Upon careful review, I believe the
+            numbers presented in section three may contain inaccuracies that
+            warrant further attention. I would like to propose that we go over
+            them together before the meeting so that we can address any
+            discrepancies in advance.
+
+            Please let me know a convenient time.
+
+            Kind regards,
+        """.trimIndent()
+        assertEquals(original, TranscriptCleanup.accept(original, candidate))
+    }
+
+    @Test
+    fun rejectsModestPaddingOfALongTranscript() {
+        // 1.6x used to be allowed, which on a long transcript is a lot of room.
+        val original = List(40) { "word$it" }.joinToString(" ")
+        val candidate = original + " " + List(12) { "extra$it" }.joinToString(" ")
+        assertEquals(original, TranscriptCleanup.accept(original, candidate))
+    }
+
+    @Test
+    fun inventedFractionCountsOnlyWordsNotInTheOriginal() {
+        val original = listOf("send", "it", "friday")
+        assertEquals(0f, TranscriptCleanup.inventedFraction(original, listOf("send", "friday")), 1e-4f)
+        assertEquals(
+            0.5f,
+            TranscriptCleanup.inventedFraction(original, listOf("send", "regards")),
+            1e-4f,
+        )
+    }
+
+    @Test
     fun rejectsDroppingMostOfTheTranscript() {
         val original = "send the quarterly report to marcus before the meeting on friday"
         val candidate = "Send it."
@@ -122,9 +166,12 @@ class TranscriptCleanupTest {
     fun promptShowsWorkedExamplesAndEndsOnAModelTurn() {
         val prompt = TranscriptCleanup.buildPrompt("send it friday")
         // Few-shot pairs plus the real one, and an open model turn so the
-        // model completes rather than continuing the user's text.
-        assertEquals(3, prompt.split("<|im_start|>user").size - 1)
-        assertEquals(3, prompt.split("<|im_start|>assistant").size - 1)
+        // model completes rather than continuing the user's text. Counted
+        // relative to each other so adding an example does not fail this.
+        val userTurns = prompt.split("<|im_start|>user").size - 1
+        val modelTurns = prompt.split("<|im_start|>assistant").size - 1
+        assertEquals(userTurns, modelTurns)
+        assert(userTurns >= 3) { "expected at least two examples plus the real turn" }
         assert(prompt.endsWith("<|im_start|>assistant\n"))
         assert(prompt.contains("So send it on Friday."))
         // ChatML, not Gemma — the wrong markers are as bad as none.
