@@ -136,6 +136,13 @@ pode pausar no meio da frase antes de a fala ser encerrada: 0,3–2,0 s, padrão
 ao construir o pipeline, então alterá-la com a sobreposição em execução
 recarrega os modelos.
 
+**Limpar o ditado** (experimental, desligado por padrão) passa um LLM no
+dispositivo sobre a transcrição para corrigir a pontuação e remover vícios de
+linguagem, com o SmolLM2-360M-Instruct (374 MB, Apache-2.0) baixado no primeiro
+uso. Se a saída do modelo se afastar do que foi dito — inventando texto ou
+respondendo em vez de organizar — a transcrição bruta é inserida sem alteração.
+Segure a bolha para limpar um único ditado sem ligar a configuração.
+
 > Instalando por APK em vez da Play Store? O Android bloqueia o botão de
 > acessibilidade até liberá-lo em
 > Configurações → Apps → Speech → ⋮ → **Permitir configurações restritas**.

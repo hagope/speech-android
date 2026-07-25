@@ -136,6 +136,14 @@ s, Standard 0,5 s. Erhöhen Sie sie, wenn Sie beim Nachdenken oder Diktieren
 von Ziffern abgeschnitten werden. Der Wert wird beim Erstellen in die Pipeline
 übernommen; eine Änderung bei laufendem Overlay lädt die Modelle neu.
 
+**Diktat bereinigen** (experimentell, standardmäßig aus) lässt ein
+On-Device-LLM über den Text laufen, um Zeichensetzung zu korrigieren und
+Füllwörter zu entfernen — mit SmolLM2-360M-Instruct (374 MB, Apache-2.0),
+beim ersten Einsatz geladen. Weicht die Ausgabe vom Gesagten ab (erfundener
+Text oder eine Antwort statt einer Bereinigung), wird der Rohtext unverändert
+eingefügt. Halten Sie die Blase gedrückt, um ein einzelnes Diktat zu
+bereinigen, ohne die Einstellung zu aktivieren.
+
 > Installation per APK statt über den Play Store? Android sperrt den
 > Bedienungshilfe-Schalter, bis er unter
 > Einstellungen → Apps → Speech → ⋮ → **Eingeschränkte Einstellungen zulassen**

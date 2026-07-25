@@ -191,6 +191,13 @@ Raise it if you get cut off while thinking or dictating digits. It is compiled
 into the pipeline when it is built, so changing it while the overlay is
 running reloads the models.
 
+**Clean up dictation** (experimental, off by default) runs an on-device LLM
+over the transcript to fix punctuation and remove fillers, using
+SmolLM2-360M-Instruct (374 MB, Apache-2.0) downloaded on first use. If the
+model's output drifts from what was said — inventing text, or answering
+instead of tidying — the raw transcript is inserted unchanged. Hold the
+bubble to clean up a single dictation without turning the setting on.
+
 > Installing from an APK rather than the Play Store? Android blocks the
 > accessibility toggle until you allow it under
 > Settings → Apps → Speech → ⋮ → **Allow restricted settings**.

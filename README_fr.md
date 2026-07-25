@@ -137,6 +137,14 @@ réfléchissant ou en dictant des chiffres. Elle est fixée à la construction d
 pipeline, donc la modifier pendant que la superposition tourne recharge les
 modèles.
 
+**Nettoyer la dictée** (expérimental, désactivé par défaut) fait passer un LLM
+local sur la transcription pour corriger la ponctuation et retirer les mots de
+remplissage, via SmolLM2-360M-Instruct (374 Mo, Apache-2.0) téléchargé à la
+première utilisation. Si la sortie du modèle s'écarte de ce qui a été dit —
+texte inventé, ou réponse au lieu d'une mise au propre — la transcription brute
+est insérée telle quelle. Maintenez la bulle pour nettoyer une seule dictée
+sans activer le réglage.
+
 > Installation depuis un APK plutôt que le Play Store ? Android bloque le
 > commutateur d'accessibilité tant qu'il n'est pas autorisé dans
 > Paramètres → Applications → Speech → ⋮ → **Autoriser les paramètres

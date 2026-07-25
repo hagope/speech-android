@@ -136,6 +136,13 @@ puedes pausar a mitad de frase antes de que se dé por terminada la locución:
 dígitos. Se fija al construir la tubería, así que cambiarla con la
 superposición en marcha recarga los modelos.
 
+**Limpiar el dictado** (experimental, desactivado por defecto) pasa un LLM en
+el dispositivo sobre la transcripción para corregir la puntuación y quitar
+muletillas, con SmolLM2-360M-Instruct (374 MB, Apache-2.0) descargado la
+primera vez. Si la salida del modelo se aleja de lo dicho —inventando texto o
+respondiendo en lugar de ordenar— se inserta la transcripción sin modificar.
+Mantén pulsada la burbuja para limpiar un solo dictado sin activar el ajuste.
+
 > ¿Instalas desde un APK en vez de Play Store? Android bloquea el interruptor
 > de accesibilidad hasta que lo permitas en
 > Ajustes → Apps → Speech → ⋮ → **Permitir ajustes restringidos**.
