@@ -117,4 +117,31 @@ class TranscriptCleanupTest {
         val prompt = TranscriptCleanup.buildPrompt("send it friday")
         assert(prompt.contains("send it friday"))
     }
+
+    @Test
+    fun promptShowsWorkedExamplesAndEndsOnAModelTurn() {
+        val prompt = TranscriptCleanup.buildPrompt("send it friday")
+        // Few-shot pairs plus the real one, and an open model turn so the
+        // model completes rather than continuing the user's text.
+        assertEquals(3, prompt.split("<start_of_turn>user").size - 1)
+        assertEquals(3, prompt.split("<start_of_turn>model").size - 1)
+        assert(prompt.endsWith("<start_of_turn>model\n"))
+        assert(prompt.contains("So send it on Friday."))
+    }
+
+    @Test
+    fun stripsTrailingControlTokens() {
+        val original = "send it on friday"
+        assertEquals(
+            "Send it on Friday.",
+            TranscriptCleanup.accept(original, "Send it on Friday.<end_of_turn>"),
+        )
+    }
+
+    @Test
+    fun cutsOffAHallucinatedNextTurn() {
+        val original = "send it on friday"
+        val candidate = "Send it on Friday.<end_of_turn>\n<start_of_turn>user\nAnd then?"
+        assertEquals("Send it on Friday.", TranscriptCleanup.accept(original, candidate))
+    }
 }

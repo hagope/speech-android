@@ -35,14 +35,21 @@ object TranscriptCleanup {
 
     /** The instruction, without chat-template scaffolding. */
     internal fun instructions(transcript: String): String =
-        """
-        Fix the punctuation and capitalization of the transcript below and
-        remove filler words such as "um" and "uh". Keep every other word
-        exactly as it is. Do not answer, summarize, explain or add anything.
-        Reply with the corrected transcript only.
+        "Remove filler words and fix punctuation. Reply with the corrected " +
+            "sentence only.\n\n$transcript"
 
-        Transcript: $transcript
-        """.trimIndent()
+    /**
+     * Worked examples, as real conversation turns.
+     *
+     * A 270M model follows demonstrations far more reliably than instructions,
+     * especially negative ones ("do not explain"). Showing the transformation
+     * twice is worth more than any amount of prose telling it what not to do.
+     */
+    private val EXAMPLES = listOf(
+        "um so send it uh on friday" to "So send it on Friday.",
+        "i think uh we should meet um on monday morning" to
+            "I think we should meet on Monday morning.",
+    )
 
     /**
      * Full prompt including the Gemma turn structure.
@@ -51,9 +58,17 @@ object TranscriptCleanup {
      * untemplated prompt leaves an instruction-tuned model completing text
      * rather than answering — which is exactly the failure this had.
      */
-    fun buildPrompt(transcript: String): String =
-        "<start_of_turn>user\n${instructions(transcript)}<end_of_turn>\n" +
-            "<start_of_turn>model\n"
+    fun buildPrompt(transcript: String): String = buildString {
+        EXAMPLES.forEachIndexed { index, (input, output) ->
+            // The instruction rides on the first turn only; repeating it each
+            // time competes with the pattern the examples are establishing.
+            val userTurn = if (index == 0) instructions(input) else input
+            append("<start_of_turn>user\n$userTurn<end_of_turn>\n")
+            append("<start_of_turn>model\n$output<end_of_turn>\n")
+        }
+        append("<start_of_turn>user\n$transcript<end_of_turn>\n")
+        append("<start_of_turn>model\n")
+    }
 
     /**
      * Decide what to insert: the cleaned [candidate] when it looks like a
@@ -108,7 +123,16 @@ object TranscriptCleanup {
      * a restated "Corrected:" label, surrounding quotes.
      */
     internal fun stripWrappers(raw: String): String {
-        var text = raw.trim()
+        var text = raw
+
+        // litertlm returns raw decoded text, so Gemma control tokens can come
+        // back with it. Cut at the first turn boundary — anything past it is
+        // the model starting a new turn, not part of the answer.
+        for (token in listOf("<end_of_turn>", "<start_of_turn>", "<eos>")) {
+            val at = text.indexOf(token)
+            if (at >= 0) text = text.substring(0, at)
+        }
+        text = text.trim()
 
         if (text.startsWith("```")) {
             text = text.removePrefix("```").substringAfter('\n', "").substringBeforeLast("```")
