@@ -41,6 +41,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     private lateinit var pauseValueView: TextView
     private lateinit var cleanupToggle: TextView
     private lateinit var bluetoothToggle: TextView
+    private lateinit var sttToggle: TextView
     private lateinit var cleanupStatusView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +76,7 @@ class VoiceOverlayActivity : ComponentActivity() {
         root.addView(overlayRow)
         root.addView(a11yRow)
 
+        root.addView(sttModelSection())
         root.addView(pauseToleranceSection())
         root.addView(bluetoothSection())
         root.addView(cleanupSection())
@@ -256,6 +258,67 @@ class VoiceOverlayActivity : ComponentActivity() {
             addView(pauseValueView)
             addView(hint)
             addView(slider)
+        }
+    }
+
+    /**
+     * Recogniser picker. The model is loaded when the pipeline is built, so
+     * switching restarts the overlay — and the first switch to a model whose
+     * bundle is not cached downloads it.
+     */
+    private fun sttModelSection(): LinearLayout {
+        val heading = TextView(this).apply {
+            text = "Speech model"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(0, 48, 0, 4)
+        }
+
+        val hintView = TextView(this).apply {
+            text = "Parakeet streams partial results and covers 114 languages. " +
+                "Whisper decodes each utterance after you stop speaking — no " +
+                "partials, 4 languages — and is a smaller download. Switching " +
+                "reloads the overlay, and downloads the model the first time."
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 0, 0, 12)
+        }
+
+        sttToggle = TextView(this).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(32, 28, 32, 28)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            setOnClickListener { cycleSttModel() }
+        }
+        renderSttToggle()
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(heading)
+            addView(hintView)
+            addView(sttToggle)
+        }
+    }
+
+    private fun renderSttToggle() {
+        sttToggle.text = OverlaySettings.sttLabel(OverlaySettings.sttModel(this))
+        sttToggle.setTextColor(Color.parseColor("#4FC3F7"))
+    }
+
+    private fun cycleSttModel() {
+        val choices = OverlaySettings.STT_CHOICES
+        val next = choices[(choices.indexOf(OverlaySettings.sttModel(this)) + 1) % choices.size]
+        OverlaySettings.setSttModel(this, next)
+        renderSttToggle()
+        if (OverlayBubbleService.isRunning) {
+            OverlayBubbleService.stop(this)
+            OverlayBubbleService.start(this)
+            Toast.makeText(this, "Reloading overlay with ${next.name}…", Toast.LENGTH_SHORT).show()
         }
     }
 

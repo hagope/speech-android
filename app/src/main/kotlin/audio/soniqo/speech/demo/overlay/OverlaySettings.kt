@@ -1,6 +1,7 @@
 package audio.soniqo.speech.demo.overlay
 
 import android.content.Context
+import audio.soniqo.speech.SttModel
 import kotlin.math.roundToInt
 
 /**
@@ -27,6 +28,7 @@ object OverlaySettings {
     private const val KEY_BUBBLE_Y = "bubble_y"
     private const val KEY_CLEANUP = "cleanup_enabled"
     private const val KEY_BLUETOOTH = "bluetooth_mic"
+    private const val KEY_STT = "stt_model"
 
     /** Number of discrete slider positions between min and max, inclusive. */
     val steps: Int = ((MAX_PAUSE_SEC - MIN_PAUSE_SEC) / STEP_SEC).roundToInt()
@@ -128,6 +130,38 @@ object OverlaySettings {
             .edit()
             .putBoolean(KEY_BLUETOOTH, enabled)
             .apply()
+    }
+
+    /**
+     * Which recogniser the overlay loads. Parakeet TDT is the default:
+     * 114 languages and streaming partials. Whisper Small is offline per
+     * utterance — no partials — but a useful comparison point, and the two
+     * differ enough in size and behaviour to be worth switching between.
+     */
+    fun sttModel(context: Context): SttModel {
+        val name = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_STT, null)
+        return SttModel.entries.firstOrNull { it.name == name } ?: DEFAULT_STT_MODEL
+    }
+
+    fun setSttModel(context: Context, model: SttModel) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_STT, model.name)
+            .apply()
+    }
+
+    /** Models the overlay offers, in the order the picker cycles them. */
+    val STT_CHOICES = listOf(SttModel.PARAKEET, SttModel.WHISPER_SMALL)
+
+    val DEFAULT_STT_MODEL = SttModel.PARAKEET
+
+    fun sttLabel(model: SttModel): String = when (model) {
+        SttModel.PARAKEET -> "Parakeet TDT — 114 languages, streaming (891 MB)"
+        SttModel.WHISPER_SMALL -> "Whisper Small — offline per utterance (374 MB)"
+        else -> model.name
     }
 
     /** e.g. "0.5 s" — one decimal place, locale-independent. */

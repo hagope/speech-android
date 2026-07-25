@@ -63,6 +63,23 @@ object ModelManager {
             // a much smaller runtime footprint than the 0.6B TDT path.
             // Published as INT8-only (encoder INT8, decoder/joint FP32), so
             // [precision] intentionally does not alter filenames here.
+            // Whisper Small INT8: 112 MB encoder + 262 MB decoder. Published
+            // under the same org, so no extra plumbing beyond the filenames.
+            SttModel.WHISPER_SMALL -> files += listOf(
+                ModelFile(
+                    "Whisper-Small-ONNX", "small-encoder.int8.onnx",
+                    localFilename = "whisper-encoder.onnx",
+                ),
+                ModelFile(
+                    "Whisper-Small-ONNX", "small-decoder.int8.onnx",
+                    localFilename = "whisper-decoder.onnx",
+                ),
+                ModelFile(
+                    "Whisper-Small-ONNX", "small-tokens.txt",
+                    localFilename = "whisper-tokens.txt",
+                ),
+            )
+
             SttModel.PARAKEET_EOU -> files += listOf(
                 ModelFile("Parakeet-EOU-120M-ONNX-INT8", "parakeet-eou-encoder.onnx"),
                 ModelFile("Parakeet-EOU-120M-ONNX-INT8", "parakeet-eou-decoder.onnx"),

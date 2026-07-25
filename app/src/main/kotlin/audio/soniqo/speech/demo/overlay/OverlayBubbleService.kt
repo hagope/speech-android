@@ -141,6 +141,9 @@ class OverlayBubbleService : Service() {
     /** True while the cleanup model is being loaded on demand. */
     @Volatile private var cleanupLoading = false
 
+    /** STT model the live pipeline was built with, for staleness checks. */
+    @Volatile private var loadedSttModel = OverlaySettings.DEFAULT_STT_MODEL
+
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
 
@@ -526,10 +529,12 @@ class OverlayBubbleService : Service() {
         setState(UiState.LOADING)
         scope.launch(Dispatchers.Default) {
             try {
+                val sttModel = OverlaySettings.sttModel(this@OverlayBubbleService)
+                loadedSttModel = sttModel
                 val modelDir = ModelManager.ensureModels(
                     context = applicationContext,
                     precision = ModelPrecision.INT8,
-                    sttModel = STT_MODEL,
+                    sttModel = sttModel,
                 ) { progress ->
                     scope.launch { setStatus("${progress.completed}/${progress.totalFiles}") }
                 }
@@ -542,7 +547,7 @@ class OverlayBubbleService : Service() {
 
                 val config = SpeechConfig(
                     modelDir = modelDir,
-                    sttModel = STT_MODEL,
+                    sttModel = sttModel,
                     precision = ModelPrecision.INT8,
                     pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
                     emitPartialTranscriptions = true,
@@ -1215,7 +1220,6 @@ class OverlayBubbleService : Service() {
         private const val DRAIN_CAP_MS = 2500L
         /** How long Stop waits for an on-demand model load to finish. */
         private const val ONESHOT_LOAD_WAIT_MS = 20000L
-        private val STT_MODEL = SttModel.PARAKEET
 
         /**
          * Instruction-tuned rather than tool-call tuned. FunctionGemma is a
@@ -1281,7 +1285,8 @@ class OverlayBubbleService : Service() {
         fun needsRestartFor(context: Context): Boolean {
             val service = liveInstance ?: return false
             return service.loadedPauseToleranceSec !=
-                OverlaySettings.pauseToleranceSec(context)
+                OverlaySettings.pauseToleranceSec(context) ||
+                service.loadedSttModel != OverlaySettings.sttModel(context)
         }
 
         fun start(context: Context) {
