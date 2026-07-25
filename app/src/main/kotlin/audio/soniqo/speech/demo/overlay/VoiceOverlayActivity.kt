@@ -307,6 +307,22 @@ class VoiceOverlayActivity : ComponentActivity() {
             setOnClickListener { runCleanupDiagnostic() }
         }
 
+        // The test button proves the model works in isolation; this shows what
+        // happened during an actual dictation, which is a different question.
+        val lastButton = TextView(this).apply {
+            text = "Show last dictation's cleanup"
+            textSize = 14f
+            setTextColor(Color.parseColor("#4FC3F7"))
+            setPadding(0, 8, 0, 8)
+            setOnClickListener {
+                showReport(
+                    "Last dictation",
+                    OverlayBubbleService.lastCleanupReport()
+                        ?: "No dictation has run through cleanup yet.",
+                )
+            }
+        }
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(heading)
@@ -314,6 +330,7 @@ class VoiceOverlayActivity : ComponentActivity() {
             addView(cleanupToggle)
             addView(cleanupStatusView)
             addView(testButton)
+            addView(lastButton)
         }
     }
 
@@ -329,14 +346,16 @@ class VoiceOverlayActivity : ComponentActivity() {
         Toast.makeText(this, "Running cleanup…", Toast.LENGTH_SHORT).show()
         Thread {
             val report = OverlayBubbleService.diagnoseCleanup(text)
-            runOnUiThread {
-                AlertDialog.Builder(this)
-                    .setTitle("Cleanup diagnostic")
-                    .setMessage(report)
-                    .setPositiveButton("Close", null)
-                    .show()
-            }
+            runOnUiThread { showReport("Cleanup diagnostic", report) }
         }.start()
+    }
+
+    private fun showReport(title: String, body: String) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(body)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     private fun renderCleanupToggle() {

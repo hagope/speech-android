@@ -117,6 +117,9 @@ class OverlayBubbleService : Service() {
     /** Human-readable cleanup state, shown on the setup screen. */
     @Volatile private var cleanupStatus = "off"
 
+    /** What cleanup did to the most recent dictation, for the setup screen. */
+    @Volatile private var lastCleanupReport: String? = null
+
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
 
@@ -660,13 +663,32 @@ class OverlayBubbleService : Service() {
      * this enabled, so every failure path keeps the raw transcript.
      */
     private fun cleanUp(text: String): String {
-        val runtime = cleanupRuntime ?: return text
+        val runtime = cleanupRuntime
+        if (runtime == null) {
+            lastCleanupReport = "not run — model $cleanupStatus"
+            return text
+        }
         return try {
+            val started = System.currentTimeMillis()
             val raw = runtime.generate(TranscriptCleanup.buildPrompt(text))
+            val elapsed = System.currentTimeMillis() - started
             val verdict = TranscriptCleanup.evaluate(text, raw)
+            lastCleanupReport = buildString {
+                appendLine(if (verdict.accepted) "ACCEPTED (${elapsed}ms)" else "REJECTED — ${verdict.reason}")
+                appendLine()
+                appendLine("Transcript:")
+                appendLine(text)
+                appendLine()
+                appendLine("Model output:")
+                appendLine(raw.ifBlank { "(empty)" })
+                appendLine()
+                appendLine("Inserted:")
+                append(verdict.text)
+            }
             Log.i(TAG, "Cleanup ${verdict.reason}; raw model output: ${raw.take(200)}")
             verdict.text
         } catch (e: Exception) {
+            lastCleanupReport = "threw ${e.javaClass.simpleName}: ${e.message}"
             Log.w(TAG, "Cleanup failed; inserting the raw transcript", e)
             text
         }
@@ -823,11 +845,11 @@ class OverlayBubbleService : Service() {
                 // Never drop what the user said — park it on the clipboard so
                 // a long-press paste still gets them there.
                 DictationAccessibilityService.InsertResult.NO_FOCUSED_FIELD -> {
-                    copyToClipboard(text)
+                    copyToClipboard(finalText)
                     toast("No text field focused — copied to clipboard")
                 }
                 DictationAccessibilityService.InsertResult.SERVICE_DISABLED -> {
-                    copyToClipboard(text)
+                    copyToClipboard(finalText)
                     toast("Accessibility service off — copied to clipboard")
                 }
             }
@@ -963,6 +985,9 @@ class OverlayBubbleService : Service() {
          */
         /** Cleanup state of the running overlay, or null if it isn't running. */
         fun cleanupStatus(): String? = liveInstance?.cleanupStatus
+
+        /** What cleanup did to the last real dictation, or null if none yet. */
+        fun lastCleanupReport(): String? = liveInstance?.lastCleanupReport
 
         /**
          * Run cleanup on [text] and report what happened, so the setup screen
