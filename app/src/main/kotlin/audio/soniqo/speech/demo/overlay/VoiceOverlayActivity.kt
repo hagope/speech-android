@@ -38,6 +38,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     private lateinit var toggleButton: TextView
     private lateinit var testField: EditText
     private lateinit var pauseValueView: TextView
+    private lateinit var cleanupToggle: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,6 +73,7 @@ class VoiceOverlayActivity : ComponentActivity() {
         root.addView(a11yRow)
 
         root.addView(pauseToleranceSection())
+        root.addView(cleanupSection())
 
         toggleButton = TextView(this).apply {
             textSize = 18f
@@ -249,6 +251,76 @@ class VoiceOverlayActivity : ComponentActivity() {
             addView(pauseValueView)
             addView(hint)
             addView(slider)
+        }
+    }
+
+    /**
+     * Opt-in LLM cleanup. Off by default: it costs a 283 MB download, memory
+     * alongside the speech models, and latency on every dictation — and the
+     * only bundle available today is tuned for tool calls rather than prose.
+     */
+    private fun cleanupSection(): LinearLayout {
+        val heading = TextView(this).apply {
+            text = "Clean up dictation (experimental)"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(0, 48, 0, 4)
+        }
+
+        val hintView = TextView(this).apply {
+            text = "Runs an on-device LLM over the transcript to fix punctuation " +
+                "and remove fillers. Downloads 283 MB on first use and adds a " +
+                "pause before the text appears. If the result looks wrong, the " +
+                "raw transcript is inserted instead."
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 0, 0, 12)
+        }
+
+        cleanupToggle = TextView(this).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(32, 28, 32, 28)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            setOnClickListener { toggleCleanup() }
+        }
+        renderCleanupToggle()
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(heading)
+            addView(hintView)
+            addView(cleanupToggle)
+        }
+    }
+
+    private fun renderCleanupToggle() {
+        val on = OverlaySettings.cleanupEnabled(this)
+        cleanupToggle.text = if (on) "On — tap to disable" else "Off — tap to enable"
+        cleanupToggle.setTextColor(
+            if (on) Color.parseColor("#4CAF50") else Color.parseColor("#888888")
+        )
+    }
+
+    private fun toggleCleanup() {
+        val next = !OverlaySettings.cleanupEnabled(this)
+        OverlaySettings.setCleanupEnabled(this, next)
+        renderCleanupToggle()
+        // The model is loaded when the service starts, so a running overlay
+        // has to restart to pick this up either way.
+        if (OverlayBubbleService.isRunning) {
+            OverlayBubbleService.stop(this)
+            OverlayBubbleService.start(this)
+            val message = if (next) {
+                "Reloading overlay — the model downloads in the background"
+            } else {
+                "Reloading overlay to apply…"
+            }
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 

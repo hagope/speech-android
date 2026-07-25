@@ -25,6 +25,7 @@ object OverlaySettings {
     private const val KEY_PAUSE = "pause_tolerance_sec"
     private const val KEY_BUBBLE_X = "bubble_x"
     private const val KEY_BUBBLE_Y = "bubble_y"
+    private const val KEY_CLEANUP = "cleanup_enabled"
 
     /** Number of discrete slider positions between min and max, inclusive. */
     val steps: Int = ((MAX_PAUSE_SEC - MIN_PAUSE_SEC) / STEP_SEC).roundToInt()
@@ -89,6 +90,24 @@ object OverlaySettings {
             .edit()
             .putInt(KEY_BUBBLE_X, x)
             .putInt(KEY_BUBBLE_Y, y)
+            .apply()
+    }
+
+    /**
+     * Whether to run the on-device LLM over a transcript before inserting it.
+     * Off by default: it costs a large download, memory alongside the speech
+     * models, and latency on every dictation.
+     */
+    fun cleanupEnabled(context: Context): Boolean =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_CLEANUP, false)
+
+    fun setCleanupEnabled(context: Context, enabled: Boolean) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_CLEANUP, enabled)
             .apply()
     }
 

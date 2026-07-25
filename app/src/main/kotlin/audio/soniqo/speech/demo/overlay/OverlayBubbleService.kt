@@ -36,6 +36,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import audio.soniqo.speech.ModelManager
+import audio.soniqo.speech.LlmModel
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.PipelineMode
 import audio.soniqo.speech.PipelineState
@@ -107,12 +108,12 @@ class OverlayBubbleService : Service() {
     /** When the engine last emitted anything; drives [drainEngine]. */
     @Volatile private var lastEngineEventAt = 0L
 
-<<<<<<< HEAD
     /** When the current dictation started; scales the finalize wait. */
     @Volatile private var recordingStartedAt = 0L
 
-=======
->>>>>>> 0668ed0 (Make the dictation pause tolerance configurable)
+    /** Null until the optional cleanup model has downloaded and loaded. */
+    @Volatile private var cleanupRuntime: CleanupRuntime? = null
+
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
 
@@ -137,6 +138,7 @@ class OverlayBubbleService : Service() {
         startForegroundNotification()
         addBubble()
         loadPipeline()
+        loadCleanupModel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -158,6 +160,8 @@ class OverlayBubbleService : Service() {
             try { p.close() } catch (_: Exception) {}
         }
         pipeline = null
+        try { cleanupRuntime?.close() } catch (_: Exception) {}
+        cleanupRuntime = null
         if (this::bubble.isInitialized && bubble.isAttachedToWindow) {
             try { windowManager.removeView(bubble) } catch (_: Exception) {}
         }
@@ -646,6 +650,49 @@ class OverlayBubbleService : Service() {
         Log.w(TAG, "Engine still emitting after ${DRAIN_CAP_MS}ms; giving up on drain")
     }
 
+    /**
+     * Run the optional LLM cleanup pass, returning [text] unchanged whenever
+     * cleanup is off, unavailable, too slow, or produces something that fails
+     * [TranscriptCleanup.accept]. Dictation must never be worse for having
+     * this enabled, so every failure path keeps the raw transcript.
+     */
+    private fun cleanUp(text: String): String {
+        val runtime = cleanupRuntime ?: return text
+        return try {
+            val raw = runtime.generate(TranscriptCleanup.buildPrompt(text))
+            val accepted = TranscriptCleanup.accept(text, raw)
+            if (accepted != text) Log.d(TAG, "Cleanup applied")
+            accepted
+        } catch (e: Exception) {
+            Log.w(TAG, "Cleanup failed; inserting the raw transcript", e)
+            text
+        }
+    }
+
+    /**
+     * Download and load the cleanup model when the setting is on. Kept lazy
+     * and entirely separate from the speech pipeline: the overlay must stay
+     * usable while this 283 MB bundle downloads, and must keep working if it
+     * never arrives.
+     */
+    private fun loadCleanupModel() {
+        if (!OverlaySettings.cleanupEnabled(this)) return
+        scope.launch(Dispatchers.Default) {
+            try {
+                ModelManager.ensureLlmModels(applicationContext, LlmModel.FUNCTIONGEMMA)
+                val path = ModelManager.llmModelFile(applicationContext, LlmModel.FUNCTIONGEMMA)
+                val runtime = LiteRtCleanupRuntime(path)
+                runtime.initialize()
+                cleanupRuntime = runtime
+                Log.i(TAG, "Transcript cleanup ready")
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                // Non-fatal by design — dictation continues without cleanup.
+                Log.w(TAG, "Cleanup model unavailable", e)
+            }
+        }
+    }
+
     /** Everything heard this session, including any unfinalized partial. */
     private fun dictatedText(): String =
         (transcript.toString() + if (partialText.isNotEmpty()) " $partialText" else "").trim()
@@ -753,8 +800,10 @@ class OverlayBubbleService : Service() {
                 toast("Nothing heard")
                 return@launch
             }
+            val finalText = withContext(Dispatchers.Default) { cleanUp(text) }
+
             val result = withContext(Dispatchers.Default) {
-                DictationAccessibilityService.insertIntoFocusedField(text)
+                DictationAccessibilityService.insertIntoFocusedField(finalText)
             }
             // Only now go idle — staying busy through the insert stops a second
             // dictation from starting on top of this one.
