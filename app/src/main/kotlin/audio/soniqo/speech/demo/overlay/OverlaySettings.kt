@@ -26,6 +26,7 @@ object OverlaySettings {
     private const val KEY_BUBBLE_X = "bubble_x"
     private const val KEY_BUBBLE_Y = "bubble_y"
     private const val KEY_CLEANUP = "cleanup_enabled"
+    private const val KEY_BLUETOOTH = "bluetooth_mic"
 
     /** Number of discrete slider positions between min and max, inclusive. */
     val steps: Int = ((MAX_PAUSE_SEC - MIN_PAUSE_SEC) / STEP_SEC).roundToInt()
@@ -108,6 +109,24 @@ object OverlaySettings {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_CLEANUP, enabled)
+            .apply()
+    }
+
+    /**
+     * Whether to capture from a Bluetooth headset when one is connected.
+     * Off by default: headset mics are usually lower quality than the phone's,
+     * so this should be a deliberate choice rather than an automatic one.
+     */
+    fun bluetoothMicEnabled(context: Context): Boolean =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_BLUETOOTH, false)
+
+    fun setBluetoothMicEnabled(context: Context, enabled: Boolean) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_BLUETOOTH, enabled)
             .apply()
     }
 

@@ -18,7 +18,9 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
@@ -101,6 +103,9 @@ class OverlayBubbleService : Service() {
     private var micJob: Job? = null
     private var finalizeJob: Job? = null
     @Volatile private var recording = false
+
+    /** True while this service holds the Bluetooth communication route. */
+    @Volatile private var bluetoothRouted = false
 
     /**
      * Open only for the dictation currently being captured or finalized.
@@ -833,15 +838,21 @@ class OverlayBubbleService : Service() {
             return
         }
 
+        // Claim the headset before opening the recorder: AudioRecord binds its
+        // route at creation, so switching afterwards would not take effect.
+        val btDevice = routeToBluetoothIfRequested()
+
         val record = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT, bufSize * 4,
         )
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
+            releaseBluetooth()
             toast("Microphone init failed")
             return
         }
+        if (btDevice != null) record.setPreferredDevice(btDevice)
         audioRecord = record
 
         transcript.clear()
@@ -900,6 +911,39 @@ class OverlayBubbleService : Service() {
         // Load while the user speaks; by Stop it is usually ready.
         loadCleanupModel(force = true)
         startRecording()
+    }
+
+    /**
+     * Route capture to a Bluetooth headset when the user asked for it,
+     * returning the device so the recorder can also mark it preferred.
+     *
+     * Every failure falls back to the built-in mic with a toast: recording
+     * silence down a half-open route would be far worse than ignoring the
+     * preference.
+     */
+    private fun routeToBluetoothIfRequested(): AudioDeviceInfo? {
+        if (!OverlaySettings.bluetoothMicEnabled(this)) return null
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+
+        val device = BluetoothMic.findDevice(audioManager)
+        if (device == null) {
+            toast("No Bluetooth microphone connected — using the phone mic")
+            return null
+        }
+        if (!BluetoothMic.activate(audioManager, device)) {
+            toast("Bluetooth mic unavailable — using the phone mic")
+            return null
+        }
+        bluetoothRouted = true
+        return device
+    }
+
+    private fun releaseBluetooth() {
+        if (!bluetoothRouted) return
+        bluetoothRouted = false
+        (getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.let {
+            BluetoothMic.release(it)
+        }
     }
 
     /** Stop: flush the tail of the utterance, then type it into the focused field. */
@@ -999,6 +1043,8 @@ class OverlayBubbleService : Service() {
             record.release()
         }
         audioRecord = null
+        // Leaving the route claimed would strand other apps on the headset.
+        releaseBluetooth()
     }
 
     // -------------------------------------------------------------------------

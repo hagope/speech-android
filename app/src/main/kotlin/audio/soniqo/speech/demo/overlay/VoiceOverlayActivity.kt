@@ -40,6 +40,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     private lateinit var testField: EditText
     private lateinit var pauseValueView: TextView
     private lateinit var cleanupToggle: TextView
+    private lateinit var bluetoothToggle: TextView
     private lateinit var cleanupStatusView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +76,7 @@ class VoiceOverlayActivity : ComponentActivity() {
         root.addView(a11yRow)
 
         root.addView(pauseToleranceSection())
+        root.addView(bluetoothSection())
         root.addView(cleanupSection())
 
         toggleButton = TextView(this).apply {
@@ -255,6 +257,63 @@ class VoiceOverlayActivity : ComponentActivity() {
             addView(hint)
             addView(slider)
         }
+    }
+
+    /**
+     * Bluetooth mic preference. Not automatic: headset mics are usually
+     * narrower band than the phone's, so recognition can get worse.
+     */
+    private fun bluetoothSection(): LinearLayout {
+        val heading = TextView(this).apply {
+            text = "Bluetooth microphone"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(0, 48, 0, 4)
+        }
+
+        val hintView = TextView(this).apply {
+            text = "Record from a connected Bluetooth headset instead of the " +
+                "phone. Useful in a car or a noisy room, but headset mics are " +
+                "usually lower quality, so accuracy can drop. Falls back to the " +
+                "phone mic if no headset is connected."
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 0, 0, 12)
+        }
+
+        bluetoothToggle = TextView(this).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(32, 28, 32, 28)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            setOnClickListener {
+                OverlaySettings.setBluetoothMicEnabled(
+                    this@VoiceOverlayActivity,
+                    !OverlaySettings.bluetoothMicEnabled(this@VoiceOverlayActivity),
+                )
+                renderBluetoothToggle()
+            }
+        }
+        renderBluetoothToggle()
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(heading)
+            addView(hintView)
+            addView(bluetoothToggle)
+        }
+    }
+
+    private fun renderBluetoothToggle() {
+        val on = OverlaySettings.bluetoothMicEnabled(this)
+        bluetoothToggle.text = if (on) "On — tap to disable" else "Off — tap to enable"
+        bluetoothToggle.setTextColor(
+            if (on) Color.parseColor("#4CAF50") else Color.parseColor("#888888")
+        )
     }
 
     /**
