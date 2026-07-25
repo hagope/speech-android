@@ -697,6 +697,16 @@ object ModelManager {
     private val ONNX_MAGIC = byteArrayOf(0x08, 0x0)
 
     /** Minimum expected sizes for key model files. */
+    /**
+     * Published byte counts for files where an exact match is worth enforcing.
+     * Guards against oversized as well as short downloads — a corrupt file of
+     * either shape parses as ONNX until the runtime reaches the damage.
+     */
+    private val EXACT_SIZES = mapOf(
+        "small-encoder.int8.onnx" to 112_413_411L,
+        "small-decoder.int8.onnx" to 262_200_764L,
+    )
+
     private val MIN_SIZES = mapOf(
         "parakeet-encoder-int8.onnx" to 100_000_000L,   // ~840 MB
         "parakeet-decoder-joint-int8.onnx" to 10_000_000L, // ~51 MB
@@ -710,9 +720,6 @@ object ModelManager {
         "encoder.onnx" to 400_000L,                      // Pocket Alba encoder, ~0.5 MB
         "lm_flow.int8.onnx" to 9_000_000L,               // Pocket flow model, ~10.0 MB
         "lm_main.int8.onnx" to 70_000_000L,              // Pocket recurrent LM, ~76.3 MB
-        // Close to the published sizes (112,413,411 / 262,200,764): a
-        // resume that ends a little short still leaves a file far above a
-        // loose floor, and it parses as ONNX right up until it does not.
         "small-encoder.int8.onnx" to 112_000_000L,       // Whisper Small, 112.4 MB
         "small-decoder.int8.onnx" to 262_000_000L,       // Whisper Small, 262.2 MB
         "text_conditioner.onnx" to 15_000_000L,          // Pocket text encoder, ~16.4 MB
@@ -726,6 +733,13 @@ object ModelManager {
     @VisibleForTesting
     internal fun isValidModel(file: File, filename: String): Boolean {
         if (file.length() == 0L) return false
+
+        // A minimum cannot catch a file that is too big, which is what a
+        // mis-resumed download produces: the whole body appended onto a
+        // partial one. Where the published size is known, require it exactly.
+        EXACT_SIZES[filename]?.let { expected ->
+            if (file.length() != expected) return false
+        }
 
         // speech-core passes one [1, 256] float32 style vector to Kokoro.
         // Upstream voice tables are much larger and must be compacted before
