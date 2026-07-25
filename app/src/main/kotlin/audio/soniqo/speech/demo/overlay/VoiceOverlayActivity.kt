@@ -2,6 +2,9 @@ package audio.soniqo.speech.demo.overlay
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -507,6 +510,14 @@ class VoiceOverlayActivity : ComponentActivity() {
             .setTitle(title)
             .setMessage(body)
             .setPositiveButton("Close", null)
+            // Diagnostics exist to be sent to someone; retyping a stack trace
+            // off a phone screen is how details get lost.
+            .setNeutralButton("Copy") { _, _ ->
+                val clipboard =
+                    getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboard?.setPrimaryClip(ClipData.newPlainText(title, body))
+                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+            }
             .show()
     }
 
