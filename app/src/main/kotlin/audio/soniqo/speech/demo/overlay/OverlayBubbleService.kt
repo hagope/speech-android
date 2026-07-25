@@ -107,9 +107,12 @@ class OverlayBubbleService : Service() {
     /** When the engine last emitted anything; drives [drainEngine]. */
     @Volatile private var lastEngineEventAt = 0L
 
+<<<<<<< HEAD
     /** When the current dictation started; scales the finalize wait. */
     @Volatile private var recordingStartedAt = 0L
 
+=======
+>>>>>>> 0668ed0 (Make the dictation pause tolerance configurable)
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
 
