@@ -68,7 +68,7 @@ import kotlin.math.ceil
  */
 class OverlayBubbleService : Service() {
 
-    private enum class UiState { LOADING, IDLE, RECORDING, TRANSCRIBING }
+    private enum class UiState { LOADING, IDLE, RECORDING, TRANSCRIBING, POLISHING }
 
     private lateinit var windowManager: WindowManager
     private lateinit var layoutParams: WindowManager.LayoutParams
@@ -80,6 +80,7 @@ class OverlayBubbleService : Service() {
     private lateinit var cancelPill: TextView
     private lateinit var micDot: GradientDrawable
     private lateinit var busyBubble: FrameLayout
+    private lateinit var polishBubble: FrameLayout
 
     /**
      * Where the user put the bubble. The window resizes as the state changes,
@@ -229,11 +230,32 @@ class OverlayBubbleService : Service() {
             )
         }
 
+        // Post-processing gets its own indicator: the transcribing wait and
+        // the LLM wait have very different durations, and a single spinner
+        // covering both looks like one long stall.
+        polishBubble = FrameLayout(this).apply {
+            val size = dp(56)
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            background = circle(Color.parseColor(BUBBLE_BG), POLISH)
+            visibility = View.GONE
+            addView(
+                ProgressBar(this@OverlayBubbleService).apply {
+                    isIndeterminate = true
+                    indeterminateTintList =
+                        ColorStateList.valueOf(Color.parseColor(POLISH))
+                    layoutParams = FrameLayout.LayoutParams(dp(26), dp(26)).apply {
+                        gravity = Gravity.CENTER
+                    }
+                }
+            )
+        }
+
         bubble = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(micButton)
             addView(busyBubble)
+            addView(polishBubble)
             addView(recordingRow)
         }
 
@@ -299,10 +321,10 @@ class OverlayBubbleService : Service() {
         }
     }
 
-    private fun circle(fill: Int) = GradientDrawable().apply {
+    private fun circle(fill: Int, stroke: String = BORDER) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(fill)
-        setStroke(dp(2), Color.parseColor(BORDER))
+        setStroke(dp(2), Color.parseColor(stroke))
     }
 
     private fun render() {
@@ -310,6 +332,7 @@ class OverlayBubbleService : Service() {
             // Loading reuses the status row (without the buttons) so model
             // download progress is visible on the bubble itself.
             UiState.LOADING -> {
+                polishBubble.visibility = View.GONE
                 micButton.visibility = View.VISIBLE
                 micDot.setColor(Color.parseColor("#555555"))
                 busyBubble.visibility = View.GONE
@@ -319,6 +342,7 @@ class OverlayBubbleService : Service() {
                 cancelPill.visibility = View.GONE
             }
             UiState.IDLE -> {
+                polishBubble.visibility = View.GONE
                 micButton.visibility = View.VISIBLE
                 micDot.setColor(Color.parseColor(ACCENT))
                 busyBubble.visibility = View.GONE
@@ -326,6 +350,7 @@ class OverlayBubbleService : Service() {
             }
             // Buttons only — no label, no status text.
             UiState.RECORDING -> {
+                polishBubble.visibility = View.GONE
                 micButton.visibility = View.GONE
                 busyBubble.visibility = View.GONE
                 recordingRow.visibility = View.VISIBLE
@@ -336,6 +361,13 @@ class OverlayBubbleService : Service() {
             UiState.TRANSCRIBING -> {
                 micButton.visibility = View.GONE
                 busyBubble.visibility = View.VISIBLE
+                polishBubble.visibility = View.GONE
+                recordingRow.visibility = View.GONE
+            }
+            UiState.POLISHING -> {
+                micButton.visibility = View.GONE
+                busyBubble.visibility = View.GONE
+                polishBubble.visibility = View.VISIBLE
                 recordingRow.visibility = View.GONE
             }
         }
@@ -832,6 +864,9 @@ class OverlayBubbleService : Service() {
                 toast("Nothing heard")
                 return@launch
             }
+            // Only switch indicators when cleanup can actually run, so the
+            // amber state never flashes for a dictation that skips it.
+            if (cleanupRuntime != null) setState(UiState.POLISHING)
             val finalText = withContext(Dispatchers.Default) { cleanUp(text) }
 
             val result = withContext(Dispatchers.Default) {
@@ -954,6 +989,8 @@ class OverlayBubbleService : Service() {
         private const val BUBBLE_BG = "#1E1E1E"
         private const val BORDER = "#8A8A8A"
         private const val ACCENT = "#4FC3F7"
+        /** Amber, for the post-processing wait. */
+        private const val POLISH = "#FFB300"
         private const val FRAME_SAMPLES = 512
         private const val SAMPLE_RATE = 16000
         /** Pushed on top of the pause tolerance so the VAD reliably trips. */
