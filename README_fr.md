@@ -145,6 +145,13 @@ texte inventé, ou réponse au lieu d'une mise au propre — la transcription br
 est insérée telle quelle. Maintenez la bulle pour nettoyer une seule dictée
 sans activer le réglage.
 
+L'écran de configuration choisit aussi le **modèle vocal** — Parakeet TDT
+(114 langues, résultats partiels en streaming) ou Whisper Small (4 langues,
+décodé à la fin de chaque énoncé, téléchargement plus léger) — et peut
+capter depuis un **casque Bluetooth** plutôt que le téléphone. Les micros de
+casque sont souvent à bande plus étroite, donc c'est désactivé par défaut et
+revient au micro du téléphone si aucun casque n'est connecté.
+
 > Installation depuis un APK plutôt que le Play Store ? Android bloque le
 > commutateur d'accessibilité tant qu'il n'est pas autorisé dans
 > Paramètres → Applications → Speech → ⋮ → **Autoriser les paramètres

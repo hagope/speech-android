@@ -143,6 +143,13 @@ uso. Se a saída do modelo se afastar do que foi dito — inventando texto ou
 respondendo em vez de organizar — a transcrição bruta é inserida sem alteração.
 Segure a bolha para limpar um único ditado sem ligar a configuração.
 
+A tela de configuração também escolhe o **modelo de voz** — Parakeet TDT
+(114 idiomas, resultados parciais em streaming) ou Whisper Small (4 idiomas,
+decodificado ao fim de cada fala, download menor) — e pode gravar de um
+**fone Bluetooth** em vez do telefone. Microfones de fone costumam ter banda
+mais estreita, então isso vem desligado e volta ao microfone do telefone
+quando nenhum fone está conectado.
+
 > Instalando por APK em vez da Play Store? O Android bloqueia o botão de
 > acessibilidade até liberá-lo em
 > Configurações → Apps → Speech → ⋮ → **Permitir configurações restritas**.

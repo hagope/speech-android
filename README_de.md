@@ -144,6 +144,13 @@ Text oder eine Antwort statt einer Bereinigung), wird der Rohtext unverändert
 eingefügt. Halten Sie die Blase gedrückt, um ein einzelnes Diktat zu
 bereinigen, ohne die Einstellung zu aktivieren.
 
+Auf dem Einrichtungsbildschirm lässt sich außerdem das **Sprachmodell**
+wählen — Parakeet TDT (114 Sprachen, Streaming-Teilergebnisse) oder Whisper
+Small (4 Sprachen, Dekodierung nach jeder Äußerung, kleinerer Download) —
+sowie die Aufnahme über ein **Bluetooth-Headset** statt über das Telefon.
+Headset-Mikrofone sind meist schmalbandiger, daher ist das standardmäßig
+aus und fällt ohne verbundenes Headset auf das Telefonmikrofon zurück.
+
 > Installation per APK statt über den Play Store? Android sperrt den
 > Bedienungshilfe-Schalter, bis er unter
 > Einstellungen → Apps → Speech → ⋮ → **Eingeschränkte Einstellungen zulassen**

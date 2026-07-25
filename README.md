@@ -198,6 +198,13 @@ model's output drifts from what was said — inventing text, or answering
 instead of tidying — the raw transcript is inserted unchanged. Hold the
 bubble to clean up a single dictation without turning the setting on.
 
+The setup screen also picks the **speech model** — Parakeet TDT (114
+languages, streaming partial results) or Whisper Small (4 languages,
+decoded after each utterance ends, a smaller download) — and can capture
+from a **Bluetooth headset** instead of the phone. Headset mics are usually
+narrower band, so that one is off by default and falls back to the phone
+mic when no headset is connected.
+
 > Installing from an APK rather than the Play Store? Android blocks the
 > accessibility toggle until you allow it under
 > Settings → Apps → Speech → ⋮ → **Allow restricted settings**.

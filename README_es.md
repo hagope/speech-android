@@ -143,6 +143,13 @@ primera vez. Si la salida del modelo se aleja de lo dicho —inventando texto o
 respondiendo en lugar de ordenar— se inserta la transcripción sin modificar.
 Mantén pulsada la burbuja para limpiar un solo dictado sin activar el ajuste.
 
+La pantalla de configuración también elige el **modelo de voz** — Parakeet
+TDT (114 idiomas, resultados parciales en streaming) o Whisper Small (4
+idiomas, decodificado al terminar cada locución, descarga menor) — y puede
+grabar desde unos **auriculares Bluetooth** en lugar del teléfono. Sus
+micrófonos suelen ser de banda más estrecha, así que eso viene desactivado
+y recurre al micrófono del teléfono si no hay auriculares conectados.
+
 > ¿Instalas desde un APK en vez de Play Store? Android bloquea el interruptor
 > de accesibilidad hasta que lo permitas en
 > Ajustes → Apps → Speech → ⋮ → **Permitir ajustes restringidos**.
