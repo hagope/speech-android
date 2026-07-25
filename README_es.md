@@ -130,6 +130,12 @@ campo de destino conserva el foco de entrada mientras se pulsan los botones. El
 texto se inserta en el cursor con `ACTION_SET_TEXT`, con pegado desde el
 portapapeles como alternativa para los campos que lo rechazan.
 
+La **tolerancia de pausa** en la pantalla de configuración define cuánto
+puedes pausar a mitad de frase antes de que se dé por terminada la locución:
+0,3–2,0 s, 0,5 s por defecto. Súbela si te corta mientras piensas o dictas
+dígitos. Se fija al construir la tubería, así que cambiarla con la
+superposición en marcha recarga los modelos.
+
 > ¿Instalas desde un APK en vez de Play Store? Android bloquea el interruptor
 > de accesibilidad hasta que lo permitas en
 > Ajustes → Apps → Speech → ⋮ → **Permitir ajustes restringidos**.

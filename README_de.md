@@ -130,6 +130,12 @@ Tippen auf die Schaltflächen den Eingabefokus behält. Der Text wird per
 `ACTION_SET_TEXT` an der Cursorposition eingefügt; für Felder, die das
 ablehnen, dient das Einfügen aus der Zwischenablage als Rückfallebene.
 
+**Pause-Toleranz** auf dem Einrichtungsbildschirm legt fest, wie lange man
+mitten im Satz pausieren darf, bevor die Äußerung abgeschlossen wird — 0,3–2,0
+s, Standard 0,5 s. Erhöhen Sie sie, wenn Sie beim Nachdenken oder Diktieren
+von Ziffern abgeschnitten werden. Der Wert wird beim Erstellen in die Pipeline
+übernommen; eine Änderung bei laufendem Overlay lädt die Modelle neu.
+
 > Installation per APK statt über den Play Store? Android sperrt den
 > Bedienungshilfe-Schalter, bis er unter
 > Einstellungen → Apps → Speech → ⋮ → **Eingeschränkte Einstellungen zulassen**

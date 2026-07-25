@@ -130,6 +130,13 @@ cible conserve le focus de saisie pendant l'appui sur les boutons. Le texte est
 inséré au curseur via `ACTION_SET_TEXT`, avec un collage depuis le
 presse-papiers en secours pour les champs qui le refusent.
 
+La **tolérance de pause** sur l'écran de configuration définit combien de
+temps vous pouvez marquer une pause en milieu de phrase avant que l'énoncé
+soit clos : 0,3–2,0 s, 0,5 s par défaut. Augmentez-la si vous êtes coupé en
+réfléchissant ou en dictant des chiffres. Elle est fixée à la construction du
+pipeline, donc la modifier pendant que la superposition tourne recharge les
+modèles.
+
 > Installation depuis un APK plutôt que le Play Store ? Android bloque le
 > commutateur d'accessibilité tant qu'il n'est pas autorisé dans
 > Paramètres → Applications → Speech → ⋮ → **Autoriser les paramètres

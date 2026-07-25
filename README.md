@@ -185,6 +185,12 @@ The overlay window is deliberately non-focusable so the target field keeps
 input focus while the buttons are tapped. Text is inserted at the cursor with
 `ACTION_SET_TEXT`, falling back to clipboard paste for fields that reject it.
 
+**Pause tolerance** on the setup screen sets how long you may pause
+mid-sentence before the utterance is finalized — 0.3–2.0 s, default 0.5 s.
+Raise it if you get cut off while thinking or dictating digits. It is compiled
+into the pipeline when it is built, so changing it while the overlay is
+running reloads the models.
+
 > Installing from an APK rather than the Play Store? Android blocks the
 > accessibility toggle until you allow it under
 > Settings → Apps → Speech → ⋮ → **Allow restricted settings**.

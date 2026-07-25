@@ -130,6 +130,12 @@ destino mantenha o foco de entrada enquanto os botões são tocados. O texto é
 inserido no cursor com `ACTION_SET_TEXT`, com colagem da área de transferência
 como alternativa para campos que a recusam.
 
+A **tolerância de pausa** na tela de configuração define quanto tempo você
+pode pausar no meio da frase antes de a fala ser encerrada: 0,3–2,0 s, padrão
+0,5 s. Aumente-a se for cortado enquanto pensa ou dita dígitos. Ela é fixada
+ao construir o pipeline, então alterá-la com a sobreposição em execução
+recarrega os modelos.
+
 > Instalando por APK em vez da Play Store? O Android bloqueia o botão de
 > acessibilidade até liberá-lo em
 > Configurações → Apps → Speech → ⋮ → **Permitir configurações restritas**.
