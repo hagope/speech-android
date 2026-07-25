@@ -15,7 +15,9 @@ import android.view.Gravity
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -35,6 +37,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     private lateinit var a11yRow: TextView
     private lateinit var toggleButton: TextView
     private lateinit var testField: EditText
+    private lateinit var pauseValueView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +70,8 @@ class VoiceOverlayActivity : ComponentActivity() {
         root.addView(micRow)
         root.addView(overlayRow)
         root.addView(a11yRow)
+
+        root.addView(pauseToleranceSection())
 
         toggleButton = TextView(this).apply {
             textSize = 18f
@@ -187,6 +192,76 @@ class VoiceOverlayActivity : ComponentActivity() {
         view.setTextColor(
             if (granted) Color.parseColor("#4CAF50") else Color.parseColor("#4FC3F7")
         )
+    }
+
+    /**
+     * Pause tolerance slider. The value is compiled into the native pipeline
+     * at creation, so changing it while the overlay runs needs a restart —
+     * handled on release rather than on every slider tick.
+     */
+    private fun pauseToleranceSection(): LinearLayout {
+        val current = OverlaySettings.pauseToleranceSec(this)
+
+        val heading = TextView(this).apply {
+            text = "Pause tolerance"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(0, 48, 0, 4)
+        }
+
+        pauseValueView = TextView(this).apply {
+            text = OverlaySettings.format(current)
+            textSize = 14f
+            setTextColor(Color.parseColor("#4FC3F7"))
+        }
+
+        val hint = TextView(this).apply {
+            text = "How long you can pause mid-sentence before it finalizes. " +
+                "Raise it if you get cut off while thinking or dictating numbers; " +
+                "lower it for snappier short phrases."
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 8, 0, 8)
+        }
+
+        val slider = SeekBar(this).apply {
+            max = OverlaySettings.steps
+            progress = OverlaySettings.secondsToProgress(current)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
+                    pauseValueView.text =
+                        OverlaySettings.format(OverlaySettings.progressToSeconds(value))
+                }
+
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+
+                override fun onStopTrackingTouch(bar: SeekBar) {
+                    val seconds = OverlaySettings.progressToSeconds(bar.progress)
+                    OverlaySettings.setPauseToleranceSec(this@VoiceOverlayActivity, seconds)
+                    applyPauseToleranceChange()
+                }
+            })
+        }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(heading)
+            addView(pauseValueView)
+            addView(hint)
+            addView(slider)
+        }
+    }
+
+    /**
+     * A live overlay holds a pipeline built with the old value, so restart it.
+     * Models are already cached, so this is a reload rather than a download.
+     */
+    private fun applyPauseToleranceChange() {
+        if (!OverlayBubbleService.isRunning) return
+        if (!OverlayBubbleService.needsRestartFor(this)) return
+        OverlayBubbleService.stop(this)
+        OverlayBubbleService.start(this)
+        Toast.makeText(this, "Reloading overlay to apply…", Toast.LENGTH_SHORT).show()
     }
 
     private fun permissionRow(label: String, onClick: () -> Unit) = TextView(this).apply {

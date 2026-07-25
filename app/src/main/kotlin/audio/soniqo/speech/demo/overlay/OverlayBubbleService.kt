@@ -54,6 +54,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.ceil
 
 /**
  * Floating dictation bubble drawn over other apps.
@@ -109,6 +110,9 @@ class OverlayBubbleService : Service() {
     /** When the current dictation started; scales the finalize wait. */
     @Volatile private var recordingStartedAt = 0L
 
+    /** Pause tolerance the live pipeline was built with, for staleness checks. */
+    @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
+
     private var state = UiState.LOADING
     private val transcript = StringBuilder()
     private var partialText = ""
@@ -125,6 +129,7 @@ class OverlayBubbleService : Service() {
     override fun onCreate() {
         super.onCreate()
         running = true
+        liveInstance = this
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         startForegroundNotification()
         addBubble()
@@ -141,6 +146,7 @@ class OverlayBubbleService : Service() {
 
     override fun onDestroy() {
         running = false
+        if (liveInstance === this) liveInstance = null
         snapAnimator?.cancel()
         stopMicrophone()
         finalizeJob?.cancel()
@@ -462,6 +468,12 @@ class OverlayBubbleService : Service() {
                     scope.launch { setStatus("${progress.completed}/${progress.totalFiles}") }
                 }
 
+                // Baked into the native pipeline at creation — changing it
+                // later means rebuilding, which is why the setup screen
+                // restarts the overlay when this changes.
+                val pauseTolerance = OverlaySettings.pauseToleranceSec(this@OverlayBubbleService)
+                loadedPauseToleranceSec = pauseTolerance
+
                 val config = SpeechConfig(
                     modelDir = modelDir,
                     sttModel = STT_MODEL,
@@ -469,6 +481,7 @@ class OverlayBubbleService : Service() {
                     pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
                     emitPartialTranscriptions = true,
                     partialTranscriptionInterval = 0.5f,
+                    endOfSpeechSilenceSec = pauseTolerance,
                 )
 
                 val p = pipelineFactory(config)
@@ -546,13 +559,26 @@ class OverlayBubbleService : Service() {
     }
 
     /**
+     * How much silence the flush must push to close an utterance.
+     *
+     * The VAD only ends a segment after [SpeechConfig.endOfSpeechSilenceSec] of
+     * silence, so a fixed amount is wrong the moment that value is
+     * user-configurable: anything shorter than the configured tolerance leaves
+     * the utterance open forever and the dictation comes back empty.
+     */
+    private fun silenceFrames(): Int {
+        val seconds = loadedPauseToleranceSec + SILENCE_MARGIN_SEC
+        return ceil(seconds * SAMPLE_RATE / FRAME_SAMPLES).toInt()
+    }
+
+    /**
      * Push silence so the VAD sees end-of-speech and closes whatever utterance
      * was still open when the mic stopped. Without this the audio sits inside
      * the engine and gets transcribed into the *next* dictation.
      */
     private fun pushSilence() {
         val silence = FloatArray(FRAME_SAMPLES)
-        repeat(SILENCE_FRAMES) {
+        repeat(silenceFrames()) {
             try {
                 pipeline?.pushAudio(silence) ?: return
             } catch (e: Exception) {
@@ -861,8 +887,9 @@ class OverlayBubbleService : Service() {
         private const val ACCENT = "#4FC3F7"
         private const val SNAP_DURATION_MS = 160L
         private const val FRAME_SAMPLES = 512
-        /** ~1.5 s of silence at 16 kHz — comfortably past the VAD's 0.5 s. */
-        private const val SILENCE_FRAMES = 48
+        private const val SAMPLE_RATE = 16000
+        /** Pushed on top of the pause tolerance so the VAD reliably trips. */
+        private const val SILENCE_MARGIN_SEC = 0.6f
         private const val DRAIN_QUIET_MS = 400L
         private const val DRAIN_CAP_MS = 2500L
         private val STT_MODEL = SttModel.PARAKEET
@@ -873,6 +900,19 @@ class OverlayBubbleService : Service() {
         private var running = false
 
         val isRunning: Boolean get() = running
+
+        @Volatile
+        private var liveInstance: OverlayBubbleService? = null
+
+        /**
+         * True when a running overlay's pipeline was built with a pause
+         * tolerance that no longer matches the saved setting.
+         */
+        fun needsRestartFor(context: Context): Boolean {
+            val service = liveInstance ?: return false
+            return service.loadedPauseToleranceSec !=
+                OverlaySettings.pauseToleranceSec(context)
+        }
 
         fun start(context: Context) {
             val intent = Intent(context, OverlayBubbleService::class.java)
