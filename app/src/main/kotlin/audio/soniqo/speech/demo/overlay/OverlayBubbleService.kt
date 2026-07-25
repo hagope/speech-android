@@ -73,7 +73,9 @@ import kotlin.math.ceil
  */
 class OverlayBubbleService : Service() {
 
-    private enum class UiState { LOADING, IDLE, RECORDING, TRANSCRIBING, POLISHING }
+    private enum class UiState {
+        LOADING, IDLE, CONNECTING, RECORDING, TRANSCRIBING, POLISHING
+    }
 
     private lateinit var windowManager: WindowManager
     private lateinit var layoutParams: WindowManager.LayoutParams
@@ -86,6 +88,7 @@ class OverlayBubbleService : Service() {
     private lateinit var micDot: GradientDrawable
     private lateinit var busyBubble: FrameLayout
     private lateinit var polishBubble: FrameLayout
+    private lateinit var connectBubble: FrameLayout
 
     /**
      * Where the user put the bubble. The window resizes as the state changes,
@@ -250,22 +253,11 @@ class OverlayBubbleService : Service() {
         // Post-processing gets its own indicator: the transcribing wait and
         // the LLM wait have very different durations, and a single spinner
         // covering both looks like one long stall.
-        polishBubble = FrameLayout(this).apply {
-            val size = dp(56)
-            layoutParams = LinearLayout.LayoutParams(size, size)
-            background = circle(Color.parseColor(BUBBLE_BG), POLISH)
-            visibility = View.GONE
-            addView(
-                ProgressBar(this@OverlayBubbleService).apply {
-                    isIndeterminate = true
-                    indeterminateTintList =
-                        ColorStateList.valueOf(Color.parseColor(POLISH))
-                    layoutParams = FrameLayout.LayoutParams(dp(26), dp(26)).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-            )
-        }
+        polishBubble = spinnerBubble(POLISH)
+
+        // Waiting for the Bluetooth route. Grey rather than green: nothing is
+        // being recorded yet, so it must not look ready to speak into.
+        connectBubble = spinnerBubble(CONNECTING)
 
         bubble = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -273,6 +265,7 @@ class OverlayBubbleService : Service() {
             addView(micButton)
             addView(busyBubble)
             addView(polishBubble)
+            addView(connectBubble)
             addView(recordingRow)
         }
 
@@ -330,6 +323,23 @@ class OverlayBubbleService : Service() {
             setOnClickListener { onClick() }
         }
 
+    /** A bordered circle containing an indeterminate spinner in [color]. */
+    private fun spinnerBubble(color: String) = FrameLayout(this).apply {
+        val size = dp(56)
+        layoutParams = LinearLayout.LayoutParams(size, size)
+        background = circle(Color.parseColor(BUBBLE_BG), color)
+        visibility = View.GONE
+        addView(
+            ProgressBar(this@OverlayBubbleService).apply {
+                isIndeterminate = true
+                indeterminateTintList = ColorStateList.valueOf(Color.parseColor(color))
+                layoutParams = FrameLayout.LayoutParams(dp(26), dp(26)).apply {
+                    gravity = Gravity.CENTER
+                }
+            }
+        )
+    }
+
     /** Idle bubble: bordered circle with a concentric dot drawn as a shape. */
     private fun micBackground(): LayerDrawable {
         val base = circle(Color.parseColor(BUBBLE_BG))
@@ -350,51 +360,38 @@ class OverlayBubbleService : Service() {
     }
 
     private fun render() {
+        // Exactly one of these is shown at a time, so derive each from the
+        // state rather than clearing them by hand in every branch — that grew
+        // a line per bubble per state and conflicted on every change.
+        micButton.visibility = visibleIf(state == UiState.LOADING || state == UiState.IDLE)
+        busyBubble.visibility = visibleIf(state == UiState.TRANSCRIBING)
+        polishBubble.visibility = visibleIf(state == UiState.POLISHING)
+        connectBubble.visibility = visibleIf(state == UiState.CONNECTING)
+        recordingRow.visibility =
+            visibleIf(state == UiState.LOADING || state == UiState.RECORDING)
+
         when (state) {
             // Loading reuses the status row (without the buttons) so model
             // download progress is visible on the bubble itself.
             UiState.LOADING -> {
-                polishBubble.visibility = View.GONE
-                micButton.visibility = View.VISIBLE
                 micDot.setColor(Color.parseColor("#555555"))
-                busyBubble.visibility = View.GONE
-                recordingRow.visibility = View.VISIBLE
                 statusView.visibility = View.VISIBLE
                 stopPill.visibility = View.GONE
                 cancelPill.visibility = View.GONE
             }
-            UiState.IDLE -> {
-                polishBubble.visibility = View.GONE
-                micButton.visibility = View.VISIBLE
-                micDot.setColor(Color.parseColor(ACCENT))
-                busyBubble.visibility = View.GONE
-                recordingRow.visibility = View.GONE
-            }
+            UiState.IDLE -> micDot.setColor(Color.parseColor(ACCENT))
             // Buttons only — no label, no status text.
             UiState.RECORDING -> {
-                polishBubble.visibility = View.GONE
-                micButton.visibility = View.GONE
-                busyBubble.visibility = View.GONE
-                recordingRow.visibility = View.VISIBLE
                 statusView.visibility = View.GONE
                 stopPill.visibility = View.VISIBLE
                 cancelPill.visibility = View.VISIBLE
             }
-            UiState.TRANSCRIBING -> {
-                micButton.visibility = View.GONE
-                busyBubble.visibility = View.VISIBLE
-                polishBubble.visibility = View.GONE
-                recordingRow.visibility = View.GONE
-            }
-            UiState.POLISHING -> {
-                micButton.visibility = View.GONE
-                busyBubble.visibility = View.GONE
-                polishBubble.visibility = View.VISIBLE
-                recordingRow.visibility = View.GONE
-            }
+            UiState.CONNECTING, UiState.TRANSCRIBING, UiState.POLISHING -> {}
         }
         applyAnchor()
     }
+
+    private fun visibleIf(condition: Boolean) = if (condition) View.VISIBLE else View.GONE
 
     /**
      * Pin the bubble to whichever edge it is docked to.
@@ -841,10 +838,25 @@ class OverlayBubbleService : Service() {
             return
         }
 
-        // Claim the headset before opening the recorder: AudioRecord binds its
-        // route at creation, so switching afterwards would not take effect.
-        val btDevice = routeToBluetoothIfRequested()
+        // Claiming a Bluetooth route takes time — up to seconds on the legacy
+        // SCO path — and audio captured before the link is up is silence. Do
+        // it off the main thread, and show a distinct state meanwhile so the
+        // stop button never appears before the mic is live.
+        if (OverlaySettings.bluetoothMicEnabled(this)) {
+            setState(UiState.CONNECTING)
+            scope.launch {
+                val device = withContext(Dispatchers.IO) { claimBluetoothRoute() }
+                if (state != UiState.CONNECTING) return@launch  // stopped meanwhile
+                openRecorder(bufSize, device)
+            }
+            return
+        }
+        openRecorder(bufSize, null)
+    }
 
+    /** Opens the recorder and goes live. Main thread; the route has settled. */
+    private fun openRecorder(bufSize: Int, btDevice: AudioDeviceInfo?) {
+        val sr = SAMPLE_RATE
         val record = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT, bufSize * 4,
@@ -852,6 +864,7 @@ class OverlayBubbleService : Service() {
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
             releaseBluetooth()
+            setState(UiState.IDLE)
             toast("Microphone init failed")
             return
         }
@@ -944,17 +957,16 @@ class OverlayBubbleService : Service() {
      * silence down a half-open route would be far worse than ignoring the
      * preference.
      */
-    private fun routeToBluetoothIfRequested(): AudioDeviceInfo? {
-        if (!OverlaySettings.bluetoothMicEnabled(this)) return null
+    private fun claimBluetoothRoute(): AudioDeviceInfo? {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
 
         val device = BluetoothMic.findDevice(audioManager)
         if (device == null) {
-            toast("No Bluetooth microphone connected — using the phone mic")
+            scope.launch { toast("No Bluetooth microphone connected — using the phone mic") }
             return null
         }
         if (!BluetoothMic.activate(audioManager, device)) {
-            toast("Bluetooth mic unavailable — using the phone mic")
+            scope.launch { toast("Bluetooth mic unavailable — using the phone mic") }
             return null
         }
         bluetoothRouted = true
@@ -1137,6 +1149,8 @@ class OverlayBubbleService : Service() {
         private const val ACCENT = "#4FC3F7"
         /** Amber, for the post-processing wait. */
         private const val POLISH = "#FFB300"
+        /** Grey, for the wait before the mic is live. */
+        private const val CONNECTING = "#BBBBBB"
         private const val FRAME_SAMPLES = 512
         private const val SAMPLE_RATE = 16000
         /** Pushed on top of the pause tolerance so the VAD reliably trips. */
