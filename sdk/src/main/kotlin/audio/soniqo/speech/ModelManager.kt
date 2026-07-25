@@ -710,8 +710,11 @@ object ModelManager {
         "encoder.onnx" to 400_000L,                      // Pocket Alba encoder, ~0.5 MB
         "lm_flow.int8.onnx" to 9_000_000L,               // Pocket flow model, ~10.0 MB
         "lm_main.int8.onnx" to 70_000_000L,              // Pocket recurrent LM, ~76.3 MB
-        "small-encoder.int8.onnx" to 100_000_000L,       // Whisper Small, ~112 MB
-        "small-decoder.int8.onnx" to 200_000_000L,       // Whisper Small, ~262 MB
+        // Close to the published sizes (112,413,411 / 262,200,764): a
+        // resume that ends a little short still leaves a file far above a
+        // loose floor, and it parses as ONNX right up until it does not.
+        "small-encoder.int8.onnx" to 112_000_000L,       // Whisper Small, 112.4 MB
+        "small-decoder.int8.onnx" to 262_000_000L,       // Whisper Small, 262.2 MB
         "text_conditioner.onnx" to 15_000_000L,          // Pocket text encoder, ~16.4 MB
         "token_scores.json" to 100_000L,                 // Pocket tokenizer scores
         "silero-vad.onnx" to 500_000L,                   // ~2 MB

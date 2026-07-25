@@ -574,6 +574,18 @@ class OverlayBubbleService : Service() {
                         ModelPrecision.INT8,
                         OverlaySettings.sttModel(this@OverlayBubbleService),
                     )}")
+                    // Sizes distinguish a truncated download from a complete
+                    // file the runtime simply cannot load.
+                    val dir = java.io.File(
+                        ModelManager.modelDir(
+                            applicationContext,
+                            ModelPrecision.INT8,
+                            OverlaySettings.sttModel(this@OverlayBubbleService),
+                        )
+                    )
+                    dir.listFiles()
+                        ?.sortedBy { it.name }
+                        ?.forEach { appendLine("  ${it.name}  ${it.length()} bytes") }
                     appendLine()
                     appendLine("${e.javaClass.name}:")
                     appendLine(e.message ?: "(no message)")
