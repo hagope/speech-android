@@ -107,6 +107,9 @@ class OverlayBubbleService : Service() {
     /** True while this service holds the Bluetooth communication route. */
     @Volatile private var bluetoothRouted = false
 
+    /** Which mic the last recording actually used, for the setup screen. */
+    @Volatile private var lastMicReport: String? = null
+
     /**
      * Open only for the dictation currently being captured or finalized.
      * Results that arrive outside it belong to a committed or cancelled
@@ -852,7 +855,15 @@ class OverlayBubbleService : Service() {
             toast("Microphone init failed")
             return
         }
-        if (btDevice != null) record.setPreferredDevice(btDevice)
+        if (btDevice != null) {
+            // setPreferredDevice needs a source; the communication endpoint is
+            // a sink, so look the input up by type.
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val input = audioManager?.let { BluetoothMic.findInputDevice(it, btDevice.type) }
+            if (input != null && !record.setPreferredDevice(input)) {
+                Log.w(TAG, "setPreferredDevice rejected ${BluetoothMic.typeName(input.type)}")
+            }
+        }
         audioRecord = record
 
         transcript.clear()
@@ -861,6 +872,18 @@ class OverlayBubbleService : Service() {
         sessionActive = true
         recordingStartedAt = System.currentTimeMillis()
         record.startRecording()
+        // Ground truth: whatever the platform actually routed us to, which is
+        // not always what was asked for.
+        val routed = record.routedDevice
+        lastMicReport = buildString {
+            appendLine("requested: ${if (btDevice != null) BluetoothMic.typeName(btDevice.type) else "phone mic"}")
+            append("actually recording from: ")
+            append(if (routed != null) BluetoothMic.typeName(routed.type) else "unknown")
+        }
+        Log.i(TAG, lastMicReport ?: "")
+        if (btDevice != null && routed != null && routed.type != btDevice.type) {
+            toast("Bluetooth not used — recording from ${BluetoothMic.typeName(routed.type)}")
+        }
         recording = true
         setState(UiState.RECORDING)
         setStatus("listening…")
@@ -1181,6 +1204,9 @@ class OverlayBubbleService : Service() {
                 "Cleanup threw ${e.javaClass.simpleName}: ${e.message}"
             }
         }
+
+        /** Which mic the last recording used, or null if none yet. */
+        fun lastMicReport(): String? = liveInstance?.lastMicReport
 
         fun needsRestartFor(context: Context): Boolean {
             val service = liveInstance ?: return false

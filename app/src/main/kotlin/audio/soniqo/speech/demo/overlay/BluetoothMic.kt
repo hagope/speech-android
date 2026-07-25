@@ -33,7 +33,12 @@ object BluetoothMic {
     fun preferredType(available: List<Int>, preference: List<Int> = PREFERRED_TYPES): Int? =
         preference.firstOrNull { it in available }
 
-    /** The best Bluetooth input device currently offered, if any. */
+    /**
+     * The communication device to claim, if a Bluetooth one is offered.
+     *
+     * These are routing endpoints, not necessarily recording inputs — see
+     * [findInputDevice] for the object AudioRecord will accept.
+     */
     fun findDevice(audioManager: AudioManager): AudioDeviceInfo? {
         val devices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.availableCommunicationDevices
@@ -45,12 +50,44 @@ object BluetoothMic {
     }
 
     /**
+     * The matching *input* device.
+     *
+     * `availableCommunicationDevices` returns routing endpoints, which for a
+     * headset are sinks. `AudioRecord.setPreferredDevice` silently rejects
+     * anything that is not a source, so the input list has to be consulted
+     * separately.
+     */
+    fun findInputDevice(audioManager: AudioManager, type: Int): AudioDeviceInfo? =
+        audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .firstOrNull { it.type == type }
+
+    /** Human-readable device type, for diagnostics. */
+    fun typeName(type: Int): String = when (type) {
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO"
+        AudioDeviceInfo.TYPE_BUILTIN_MIC -> "built-in mic"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "wired headset"
+        AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headset"
+        AudioDeviceInfo.TYPE_TELEPHONY -> "telephony"
+        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            type == AudioDeviceInfo.TYPE_BLE_HEADSET
+        ) {
+            "LE Audio headset"
+        } else {
+            "type $type"
+        }
+    }
+
+    /**
      * Route communication audio to [device]. Returns false if the platform
      * refuses, in which case the caller should fall back to the built-in mic
      * rather than record silence.
      */
     fun activate(audioManager: AudioManager, device: AudioDeviceInfo): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Communication routing only takes effect in a communication mode;
+            // in MODE_NORMAL the platform is free to ignore the selection and
+            // keep capturing from the built-in mic.
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             runCatching { audioManager.setCommunicationDevice(device) }
                 .onFailure { Log.w(TAG, "setCommunicationDevice failed", it) }
                 .getOrDefault(false)
@@ -84,6 +121,7 @@ object BluetoothMic {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice()
+                audioManager.mode = AudioManager.MODE_NORMAL
             } else {
                 audioManager.isBluetoothScoOn = false
                 audioManager.stopBluetoothSco()

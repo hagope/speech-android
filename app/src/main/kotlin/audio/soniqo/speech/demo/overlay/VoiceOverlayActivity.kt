@@ -300,11 +300,26 @@ class VoiceOverlayActivity : ComponentActivity() {
         }
         renderBluetoothToggle()
 
+        val micButton = TextView(this).apply {
+            text = "Show which mic was last used"
+            textSize = 14f
+            setTextColor(Color.parseColor("#4FC3F7"))
+            setPadding(0, 16, 0, 8)
+            setOnClickListener {
+                showReport(
+                    "Microphone",
+                    OverlayBubbleService.lastMicReport()
+                        ?: "No recording has started yet.",
+                )
+            }
+        }
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(heading)
             addView(hintView)
             addView(bluetoothToggle)
+            addView(micButton)
         }
     }
 
