@@ -297,11 +297,26 @@ class VoiceOverlayActivity : ComponentActivity() {
         }
         renderSttToggle()
 
+        val errorButton = TextView(this).apply {
+            text = "Show last model load error"
+            textSize = 14f
+            setTextColor(Color.parseColor("#4FC3F7"))
+            setPadding(0, 16, 0, 8)
+            setOnClickListener {
+                showReport(
+                    "Model load error",
+                    OverlayBubbleService.lastLoadError
+                        ?: "No load failure recorded.",
+                )
+            }
+        }
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(heading)
             addView(hintView)
             addView(sttToggle)
+            addView(errorButton)
         }
     }
 

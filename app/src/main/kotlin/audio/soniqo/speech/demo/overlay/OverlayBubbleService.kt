@@ -564,8 +564,26 @@ class OverlayBubbleService : Service() {
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "Overlay pipeline init failed", e)
+                // Toasts truncate, and the interesting part of an ORT failure
+                // is at the end of the message. Keep the whole thing for the
+                // setup screen to show.
+                Companion.lastLoadError = buildString {
+                    appendLine("model: ${OverlaySettings.sttModel(this@OverlayBubbleService).name}")
+                    appendLine("dir: ${ModelManager.modelDir(
+                        applicationContext,
+                        ModelPrecision.INT8,
+                        OverlaySettings.sttModel(this@OverlayBubbleService),
+                    )}")
+                    appendLine()
+                    appendLine("${e.javaClass.name}:")
+                    appendLine(e.message ?: "(no message)")
+                    generateSequence(e.cause) { it.cause }.forEach {
+                        appendLine()
+                        appendLine("caused by ${it.javaClass.name}: ${it.message}")
+                    }
+                }
                 withContext(Dispatchers.Main) {
-                    toast("Speech models failed to load: ${e.message ?: e.javaClass.simpleName}")
+                    toast("Speech models failed to load — see the setup screen")
                     stopSelf()
                 }
             }
@@ -1278,6 +1296,13 @@ class OverlayBubbleService : Service() {
                 "Cleanup threw ${e.javaClass.simpleName}: ${e.message}"
             }
         }
+
+        /**
+         * Survives the service being stopped, which a load failure does — so
+         * the error is still readable once the user reaches the setup screen.
+         */
+        @Volatile
+        var lastLoadError: String? = null
 
         /** Which mic the last recording used, or null if none yet. */
         fun lastMicReport(): String? = liveInstance?.lastMicReport
