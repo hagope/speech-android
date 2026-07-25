@@ -154,13 +154,18 @@ object OverlaySettings {
     }
 
     /** Models the overlay offers, in the order the picker cycles them. */
-    val STT_CHOICES = listOf(SttModel.PARAKEET, SttModel.WHISPER_SMALL)
+    val STT_CHOICES = listOf(
+        SttModel.PARAKEET,
+        SttModel.WHISPER_SMALL,
+        SttModel.CANARY_180M,
+    )
 
     val DEFAULT_STT_MODEL = SttModel.PARAKEET
 
     fun sttLabel(model: SttModel): String = when (model) {
         SttModel.PARAKEET -> "Parakeet TDT — 114 languages, streaming (891 MB)"
         SttModel.WHISPER_SMALL -> "Whisper Small — offline per utterance (374 MB)"
+        SttModel.CANARY_180M -> "Canary 180M — offline per utterance (213 MB)"
         else -> model.name
     }
 

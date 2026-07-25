@@ -6,6 +6,7 @@
 #include <speech_core/models/onnx_engine.h>
 #include <speech_core/models/onnx_nemotron_streaming_stt.h>
 #include <speech_core/models/onnx_pocket_tts.h>
+#include <speech_core/models/onnx_canary_stt.h>
 #include <speech_core/models/onnx_whisper_stt.h>
 #include <speech_core/models/parakeet_stt.h>
 #include <speech_core/models/nemotron_multilingual_stt.h>
@@ -73,6 +74,7 @@ static constexpr int STT_PARAKEET = 0;
 static constexpr int STT_NEMOTRON_MULTILINGUAL = 1;
 static constexpr int STT_PARAKEET_EOU = 2;
 static constexpr int STT_WHISPER_SMALL = 3;
+static constexpr int STT_CANARY_180M = 4;
 static constexpr int BACKEND_ONNX = 0;
 static constexpr int BACKEND_LITERT = 1;
 static constexpr int TTS_KOKORO = 0;
@@ -301,6 +303,21 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                 dir + "/vocab.json",
                 eou_cfg, nnapi);
             h->eou_stt = m.get();
+            h->stt = std::move(m);
+        } else if (sttModel == STT_CANARY_180M) {
+            // Encoder-decoder, same offline shape as Whisper: no partials.
+            // Canary takes an explicit language token rather than detecting,
+            // so "auto" falls back to the export's English default.
+            speech_core::OnnxCanaryStt::Config canary_cfg;
+            if (lang != "auto" && !lang.empty()) {
+                canary_cfg.language = lang;
+                canary_cfg.target_language = lang;
+            }
+            auto m = std::make_unique<speech_core::OnnxCanaryStt>(
+                dir + "/canary-encoder.onnx",
+                dir + "/canary-decoder.onnx",
+                dir + "/canary-vocab.txt",
+                canary_cfg, nnapi);
             h->stt = std::move(m);
         } else if (sttModel == STT_WHISPER_SMALL) {
             // Encoder-decoder: the whole utterance is encoded, then decoded

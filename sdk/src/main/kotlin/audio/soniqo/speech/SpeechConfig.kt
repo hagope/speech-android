@@ -17,6 +17,14 @@ enum class SttModel {
      * ordinal is what crosses the JNI boundary.
      */
     WHISPER_SMALL,
+
+    /**
+     * NVIDIA Canary 180M Flash, encoder-decoder like Whisper but roughly a
+     * third of the size. Offline per utterance; 4 languages, and the export
+     * carries separate source and target language tokens, so translation is
+     * reachable from the same model later.
+     */
+    CANARY_180M,
 }
 
 /** Native inference backend for the STT model. Only Nemotron multilingual

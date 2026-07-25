@@ -80,6 +80,26 @@ object ModelManager {
                 ),
             )
 
+            // Canary 180M Flash INT8: 134 MB encoder + 79.5 MB decoder,
+            // published for onnx-asr rather than by us, hence the org.
+            SttModel.CANARY_180M -> files += listOf(
+                ModelFile(
+                    "canary-180m-flash-onnx", "encoder-model.int8.onnx",
+                    localFilename = "canary-encoder.onnx",
+                    org = "istupakov",
+                ),
+                ModelFile(
+                    "canary-180m-flash-onnx", "decoder-model.int8.onnx",
+                    localFilename = "canary-decoder.onnx",
+                    org = "istupakov",
+                ),
+                ModelFile(
+                    "canary-180m-flash-onnx", "vocab.txt",
+                    localFilename = "canary-vocab.txt",
+                    org = "istupakov",
+                ),
+            )
+
             SttModel.PARAKEET_EOU -> files += listOf(
                 ModelFile("Parakeet-EOU-120M-ONNX-INT8", "parakeet-eou-encoder.onnx"),
                 ModelFile("Parakeet-EOU-120M-ONNX-INT8", "parakeet-eou-decoder.onnx"),
@@ -705,6 +725,8 @@ object ModelManager {
     private val EXACT_SIZES = mapOf(
         "small-encoder.int8.onnx" to 112_413_411L,
         "small-decoder.int8.onnx" to 262_200_764L,
+        "encoder-model.int8.onnx" to 133_710_896L,
+        "decoder-model.int8.onnx" to 79_520_211L,
     )
 
     private val MIN_SIZES = mapOf(
