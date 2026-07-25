@@ -30,7 +30,11 @@ object TranscriptCleanup {
     /** Fraction of the original's content words the candidate must retain. */
     private const val MIN_CONTENT_OVERLAP = 0.6f
 
-    fun buildPrompt(transcript: String): String =
+    /** Why a candidate was rejected — surfaced by the setup screen's test. */
+    data class Verdict(val text: String, val accepted: Boolean, val reason: String)
+
+    /** The instruction, without chat-template scaffolding. */
+    internal fun instructions(transcript: String): String =
         """
         Fix the punctuation and capitalization of the transcript below and
         remove filler words such as "um" and "uh". Keep every other word
@@ -38,40 +42,65 @@ object TranscriptCleanup {
         Reply with the corrected transcript only.
 
         Transcript: $transcript
-        Corrected:
         """.trimIndent()
+
+    /**
+     * Full prompt including the Gemma turn structure.
+     *
+     * litertlm 0.14.0 does not apply a chat template of its own, so an
+     * untemplated prompt leaves an instruction-tuned model completing text
+     * rather than answering — which is exactly the failure this had.
+     */
+    fun buildPrompt(transcript: String): String =
+        "<start_of_turn>user\n${instructions(transcript)}<end_of_turn>\n" +
+            "<start_of_turn>model\n"
 
     /**
      * Decide what to insert: the cleaned [candidate] when it looks like a
      * faithful cleanup of [original], otherwise [original] unchanged.
      */
-    fun accept(original: String, candidate: String): String {
+    fun accept(original: String, candidate: String): String =
+        evaluate(original, candidate).text
+
+    /** [accept] with the reasoning kept, for diagnostics. */
+    fun evaluate(original: String, candidate: String): Verdict {
         val cleaned = stripWrappers(candidate)
-        if (cleaned.isBlank()) return original
+        if (cleaned.isBlank()) {
+            return Verdict(original, false, "model returned nothing")
+        }
 
         // Tool-call syntax means the model fell back to what it was tuned for.
         if (cleaned.contains(FunctionGemmaPrompt.FUNCTION_CALL_START) ||
             cleaned.contains(FunctionGemmaPrompt.FUNCTION_CALL_END)
         ) {
-            return original
+            return Verdict(original, false, "model emitted tool-call syntax")
         }
 
         val originalWords = contentWords(original)
         val candidateWords = contentWords(cleaned)
-        if (candidateWords.isEmpty()) return original
+        if (candidateWords.isEmpty()) {
+            return Verdict(original, false, "no words left after cleanup")
+        }
 
         // Rambling: cleanup only ever removes words, so growth means invention.
         if (candidateWords.size > originalWords.size * MAX_LENGTH_RATIO + 1) {
-            return original
+            return Verdict(
+                original, false,
+                "model added text (${originalWords.size} words in, ${candidateWords.size} out)",
+            )
         }
 
-        if (originalWords.isNotEmpty() &&
-            retainedFraction(originalWords, candidateWords) < MIN_CONTENT_OVERLAP
-        ) {
-            return original
+        if (originalWords.isNotEmpty()) {
+            val retained = retainedFraction(originalWords, candidateWords)
+            if (retained < MIN_CONTENT_OVERLAP) {
+                return Verdict(
+                    original, false,
+                    "only ${(retained * 100).toInt()}% of the words survived",
+                )
+            }
         }
 
-        return cleaned
+        return Verdict(cleaned, true, "accepted")
     }
 
     /**

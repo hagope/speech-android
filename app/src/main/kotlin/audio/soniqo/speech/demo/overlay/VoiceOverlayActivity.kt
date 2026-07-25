@@ -1,6 +1,7 @@
 package audio.soniqo.speech.demo.overlay
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -39,6 +40,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     private lateinit var testField: EditText
     private lateinit var pauseValueView: TextView
     private lateinit var cleanupToggle: TextView
+    private lateinit var cleanupStatusView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,6 +149,7 @@ class VoiceOverlayActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        if (this::cleanupToggle.isInitialized) renderCleanupToggle()
     }
 
     // -------------------------------------------------------------------------
@@ -290,15 +293,60 @@ class VoiceOverlayActivity : ComponentActivity() {
         }
         renderCleanupToggle()
 
+        cleanupStatusView = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(0, 12, 0, 0)
+        }
+
+        val testButton = TextView(this).apply {
+            text = "Test cleanup on the text below"
+            textSize = 14f
+            setTextColor(Color.parseColor("#4FC3F7"))
+            setPadding(0, 20, 0, 8)
+            setOnClickListener { runCleanupDiagnostic() }
+        }
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(heading)
             addView(hintView)
             addView(cleanupToggle)
+            addView(cleanupStatusView)
+            addView(testButton)
         }
     }
 
+    /**
+     * Show what the model actually returned and how the guard judged it.
+     * Cleanup falls back silently by design, so without this there is no way
+     * to tell "model never loaded" from "guard rejected the output".
+     */
+    private fun runCleanupDiagnostic() {
+        val text = testField.text?.toString()?.trim().orEmpty().ifBlank {
+            "um so send it uh on friday i mean monday"
+        }
+        Toast.makeText(this, "Running cleanup…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val report = OverlayBubbleService.diagnoseCleanup(text)
+            runOnUiThread {
+                AlertDialog.Builder(this)
+                    .setTitle("Cleanup diagnostic")
+                    .setMessage(report)
+                    .setPositiveButton("Close", null)
+                    .show()
+            }
+        }.start()
+    }
+
     private fun renderCleanupToggle() {
+        if (this::cleanupStatusView.isInitialized) {
+            val status = OverlayBubbleService.cleanupStatus()
+            cleanupStatusView.text = when {
+                status == null -> "Status: overlay not running"
+                else -> "Status: $status"
+            }
+        }
         val on = OverlaySettings.cleanupEnabled(this)
         cleanupToggle.text = if (on) "On — tap to disable" else "Off — tap to enable"
         cleanupToggle.setTextColor(

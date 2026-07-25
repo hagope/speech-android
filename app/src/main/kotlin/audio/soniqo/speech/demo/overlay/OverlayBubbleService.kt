@@ -114,6 +114,9 @@ class OverlayBubbleService : Service() {
     /** Null until the optional cleanup model has downloaded and loaded. */
     @Volatile private var cleanupRuntime: CleanupRuntime? = null
 
+    /** Human-readable cleanup state, shown on the setup screen. */
+    @Volatile private var cleanupStatus = "off"
+
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
 
@@ -660,9 +663,9 @@ class OverlayBubbleService : Service() {
         val runtime = cleanupRuntime ?: return text
         return try {
             val raw = runtime.generate(TranscriptCleanup.buildPrompt(text))
-            val accepted = TranscriptCleanup.accept(text, raw)
-            if (accepted != text) Log.d(TAG, "Cleanup applied")
-            accepted
+            val verdict = TranscriptCleanup.evaluate(text, raw)
+            Log.i(TAG, "Cleanup ${verdict.reason}; raw model output: ${raw.take(200)}")
+            verdict.text
         } catch (e: Exception) {
             Log.w(TAG, "Cleanup failed; inserting the raw transcript", e)
             text
@@ -676,18 +679,25 @@ class OverlayBubbleService : Service() {
      * never arrives.
      */
     private fun loadCleanupModel() {
-        if (!OverlaySettings.cleanupEnabled(this)) return
+        if (!OverlaySettings.cleanupEnabled(this)) {
+            cleanupStatus = "off"
+            return
+        }
+        cleanupStatus = "downloading…"
         scope.launch(Dispatchers.Default) {
             try {
                 ModelManager.ensureLlmModels(applicationContext, LlmModel.FUNCTIONGEMMA)
+                cleanupStatus = "loading model…"
                 val path = ModelManager.llmModelFile(applicationContext, LlmModel.FUNCTIONGEMMA)
                 val runtime = LiteRtCleanupRuntime(path)
                 runtime.initialize()
                 cleanupRuntime = runtime
+                cleanupStatus = "ready"
                 Log.i(TAG, "Transcript cleanup ready")
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
                 // Non-fatal by design — dictation continues without cleanup.
+                cleanupStatus = "unavailable: ${e.message ?: e.javaClass.simpleName}"
                 Log.w(TAG, "Cleanup model unavailable", e)
             }
         }
@@ -944,6 +954,40 @@ class OverlayBubbleService : Service() {
          * True when a running overlay's pipeline was built with a pause
          * tolerance that no longer matches the saved setting.
          */
+        /** Cleanup state of the running overlay, or null if it isn't running. */
+        fun cleanupStatus(): String? = liveInstance?.cleanupStatus
+
+        /**
+         * Run cleanup on [text] and report what happened, so the setup screen
+         * can show whether the model ran, what it returned, and why the guard
+         * accepted or rejected it.
+         */
+        fun diagnoseCleanup(text: String): String {
+            val service = liveInstance ?: return "Overlay is not running."
+            val runtime = service.cleanupRuntime
+                ?: return "Cleanup model not loaded (${service.cleanupStatus})."
+            return try {
+                val started = System.currentTimeMillis()
+                val raw = runtime.generate(TranscriptCleanup.buildPrompt(text))
+                val elapsed = System.currentTimeMillis() - started
+                val verdict = TranscriptCleanup.evaluate(text, raw)
+                buildString {
+                    appendLine("Input:")
+                    appendLine(text)
+                    appendLine()
+                    appendLine("Model output (${elapsed}ms):")
+                    appendLine(raw.ifBlank { "(empty)" })
+                    appendLine()
+                    appendLine(if (verdict.accepted) "ACCEPTED" else "REJECTED — ${verdict.reason}")
+                    appendLine()
+                    appendLine("Would insert:")
+                    append(verdict.text)
+                }
+            } catch (e: Exception) {
+                "Cleanup threw ${e.javaClass.simpleName}: ${e.message}"
+            }
+        }
+
         fun needsRestartFor(context: Context): Boolean {
             val service = liveInstance ?: return false
             return service.loadedPauseToleranceSec !=
