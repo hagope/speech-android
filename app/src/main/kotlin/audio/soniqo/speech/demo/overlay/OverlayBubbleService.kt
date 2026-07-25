@@ -22,9 +22,12 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -120,6 +123,12 @@ class OverlayBubbleService : Service() {
 
     /** What cleanup did to the most recent dictation, for the setup screen. */
     @Volatile private var lastCleanupReport: String? = null
+
+    /** Cleanup requested by long-press for this dictation only. */
+    @Volatile private var oneShotCleanup = false
+
+    /** True while the cleanup model is being loaded on demand. */
+    @Volatile private var cleanupLoading = false
 
     /** Pause tolerance the live pipeline was built with, for staleness checks. */
     @Volatile private var loadedPauseToleranceSec = OverlaySettings.DEFAULT_PAUSE_SEC
@@ -282,7 +291,12 @@ class OverlayBubbleService : Service() {
             y = anchorY
         }
 
-        micButton.setOnTouchListener(DragTouchListener { startRecording() })
+        micButton.setOnTouchListener(
+            DragTouchListener(
+                onTap = { startRecording() },
+                onLongPress = { startRecordingWithCleanup() },
+            )
+        )
         windowManager.addView(bubble, layoutParams)
         render()
     }
@@ -429,9 +443,17 @@ class OverlayBubbleService : Service() {
         statusView.text = text
     }
 
-    /** Moves the bubble on drag, fires [onTap] on a tap that never became one. */
-    private inner class DragTouchListener(private val onTap: () -> Unit) : View.OnTouchListener {
+    /**
+     * Moves the bubble on drag, fires [onTap] on a tap that never became one,
+     * and [onLongPress] on a press held in place.
+     */
+    private inner class DragTouchListener(
+        private val onTap: () -> Unit,
+        private val onLongPress: () -> Unit,
+    ) : View.OnTouchListener {
         private val slop = ViewConfiguration.get(this@OverlayBubbleService).scaledTouchSlop
+        private val longPressHandler = Handler(Looper.getMainLooper())
+        private var longPressed = false
         private var startX = 0
         private var startY = 0
         private var touchX = 0f
@@ -446,6 +468,11 @@ class OverlayBubbleService : Service() {
                     touchX = event.rawX
                     touchY = event.rawY
                     dragging = false
+                    longPressed = false
+                    longPressHandler.postDelayed({
+                        longPressed = true
+                        onLongPress()
+                    }, ViewConfiguration.getLongPressTimeout().toLong())
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -454,6 +481,8 @@ class OverlayBubbleService : Service() {
                     if (!dragging && kotlin.math.hypot(dx.toFloat(), dy.toFloat()) < slop) {
                         return true
                     }
+                    // Moving means a drag, not a hold.
+                    longPressHandler.removeCallbacksAndMessages(null)
                     dragging = true
                     val bounds = screenBounds()
                     anchorX = (startX + dx)
@@ -466,6 +495,8 @@ class OverlayBubbleService : Service() {
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
+                    longPressHandler.removeCallbacksAndMessages(null)
+                    if (longPressed) return true
                     if (dragging) {
                         // Left where it was dropped, and remembered, so the
                         // overlay comes back in the same place next time.
@@ -694,7 +725,17 @@ class OverlayBubbleService : Service() {
      * [TranscriptCleanup.accept]. Dictation must never be worse for having
      * this enabled, so every failure path keeps the raw transcript.
      */
-    private fun cleanUp(text: String): String {
+    private suspend fun cleanUp(text: String): String {
+        if (!OverlaySettings.cleanupEnabled(this) && !oneShotCleanup) return text
+
+        // A long-press starts the load and the recording together, so by now
+        // it is usually ready; wait out the remainder rather than silently
+        // skipping the cleanup the user asked for.
+        val deadline = System.currentTimeMillis() + ONESHOT_LOAD_WAIT_MS
+        while (cleanupLoading && System.currentTimeMillis() < deadline) {
+            delay(100)
+        }
+
         val runtime = cleanupRuntime
         if (runtime == null) {
             lastCleanupReport = "not run — model $cleanupStatus"
@@ -732,11 +773,13 @@ class OverlayBubbleService : Service() {
      * usable while this 283 MB bundle downloads, and must keep working if it
      * never arrives.
      */
-    private fun loadCleanupModel() {
-        if (!OverlaySettings.cleanupEnabled(this)) {
+    private fun loadCleanupModel(force: Boolean = false) {
+        if (cleanupRuntime != null || cleanupLoading) return
+        if (!force && !OverlaySettings.cleanupEnabled(this)) {
             cleanupStatus = "off"
             return
         }
+        cleanupLoading = true
         cleanupStatus = "downloading…"
         scope.launch(Dispatchers.Default) {
             try {
@@ -753,6 +796,8 @@ class OverlayBubbleService : Service() {
                 // Non-fatal by design — dictation continues without cleanup.
                 cleanupStatus = "unavailable: ${e.message ?: e.javaClass.simpleName}"
                 Log.w(TAG, "Cleanup model unavailable", e)
+            } finally {
+                cleanupLoading = false
             }
         }
     }
@@ -833,6 +878,30 @@ class OverlayBubbleService : Service() {
         }
     }
 
+    /**
+     * Long-press: record with cleanup for this dictation only, without
+     * changing the setting. Haptic on start, since the bubble looks the same
+     * either way and the press needs to confirm itself.
+     */
+    private fun startRecordingWithCleanup() {
+        if (state != UiState.IDLE) return
+
+        if (!OverlaySettings.cleanupEnabled(this) &&
+            !ModelManager.areLlmModelsReady(applicationContext, CLEANUP_MODEL)
+        ) {
+            // Long-press must not silently trigger a 374 MB download.
+            toast("Cleanup model not downloaded — enable it in settings first")
+            startRecording()
+            return
+        }
+
+        oneShotCleanup = true
+        micButton.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        // Load while the user speaks; by Stop it is usually ready.
+        loadCleanupModel(force = true)
+        startRecording()
+    }
+
     /** Stop: flush the tail of the utterance, then type it into the focused field. */
     private fun stopAndCommit() {
         if (state != UiState.RECORDING) return
@@ -860,14 +929,20 @@ class OverlayBubbleService : Service() {
             drainEngine()
 
             if (text.isBlank()) {
+                // Reset here too: this path returns before the cleanup call,
+                // and a leftover flag would clean the *next* dictation.
+                oneShotCleanup = false
                 setState(UiState.IDLE)
                 toast("Nothing heard")
                 return@launch
             }
             // Only switch indicators when cleanup can actually run, so the
             // amber state never flashes for a dictation that skips it.
-            if (cleanupRuntime != null) setState(UiState.POLISHING)
+            if (cleanupRuntime != null || cleanupLoading || oneShotCleanup) {
+                setState(UiState.POLISHING)
+            }
             val finalText = withContext(Dispatchers.Default) { cleanUp(text) }
+            oneShotCleanup = false
 
             val result = withContext(Dispatchers.Default) {
                 DictationAccessibilityService.insertIntoFocusedField(finalText)
@@ -901,6 +976,8 @@ class OverlayBubbleService : Service() {
         transcript.clear()
         partialText = ""
         speechActive = false
+
+        oneShotCleanup = false
 
         // Cancelled audio still has to be flushed out of the engine, or it
         // resurfaces in the next dictation — exactly what Cancel must prevent.
@@ -997,6 +1074,8 @@ class OverlayBubbleService : Service() {
         private const val SILENCE_MARGIN_SEC = 0.6f
         private const val DRAIN_QUIET_MS = 400L
         private const val DRAIN_CAP_MS = 2500L
+        /** How long Stop waits for an on-demand model load to finish. */
+        private const val ONESHOT_LOAD_WAIT_MS = 20000L
         private val STT_MODEL = SttModel.PARAKEET
 
         /**
