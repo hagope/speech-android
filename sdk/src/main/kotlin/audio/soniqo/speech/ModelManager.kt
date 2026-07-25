@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
  */
 object ModelManager {
 
-    private const val BASE_URL = "https://huggingface.co/soniqo"
+    private const val HF_BASE_URL = "https://huggingface.co"
+    internal const val DEFAULT_ORG = "soniqo"
     private const val POCKET_TTS_REVISION = "v1.0.0"
     private const val POCKET_TTS_DIR = "pocket_tts"
 
@@ -188,6 +189,13 @@ object ModelManager {
             ModelFile("FunctionGemma-270M-LiteRT-LM", "model-lora16-android.litertlm"),
             ModelFile("FunctionGemma-270M-LiteRT-LM", "control-r4-rank16.tflite"),
         )
+        LlmModel.SMOLLM2_360M_IT -> listOf(
+            ModelFile(
+                repo = "SmolLM2-360M-Instruct",
+                filename = "SmolLM2_360M_instruct.litertlm",
+                org = "litert-community",
+            ),
+        )
     }
 
     data class ModelFile(
@@ -198,6 +206,8 @@ object ModelManager {
         val revision: String = "main",
         /** Cache-relative path. May differ to avoid cross-model collisions. */
         val localFilename: String = filename,
+        /** HuggingFace org hosting [repo]. Most models are published by us. */
+        val org: String = DEFAULT_ORG,
     )
 
     data class Progress(
@@ -317,6 +327,7 @@ object ModelManager {
         val name = when (llmModel) {
             LlmModel.FUNCTIONGEMMA -> "models_llm"
             LlmModel.FUNCTIONGEMMA_CONTROL_LORA -> "models_llm-control-lora"
+            LlmModel.SMOLLM2_360M_IT -> "models_llm-smollm2-360m-it"
         }
         return File(context.filesDir, name).absolutePath
     }
@@ -471,7 +482,8 @@ object ModelManager {
             }
             dest.parentFile?.mkdirs()
 
-            val url = "$BASE_URL/${model.repo}/resolve/${model.revision}/${model.filename}"
+            val url =
+                "$HF_BASE_URL/${model.org}/${model.repo}/resolve/${model.revision}/${model.filename}"
             downloadFile(url, dest) { bytes, fileTotal ->
                 onProgress?.invoke(Progress(model.localFilename, bytes, fileTotal, allFiles.size, completed))
             }

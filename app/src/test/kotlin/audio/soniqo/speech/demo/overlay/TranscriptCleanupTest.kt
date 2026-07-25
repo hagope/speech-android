@@ -123,10 +123,12 @@ class TranscriptCleanupTest {
         val prompt = TranscriptCleanup.buildPrompt("send it friday")
         // Few-shot pairs plus the real one, and an open model turn so the
         // model completes rather than continuing the user's text.
-        assertEquals(3, prompt.split("<start_of_turn>user").size - 1)
-        assertEquals(3, prompt.split("<start_of_turn>model").size - 1)
-        assert(prompt.endsWith("<start_of_turn>model\n"))
+        assertEquals(3, prompt.split("<|im_start|>user").size - 1)
+        assertEquals(3, prompt.split("<|im_start|>assistant").size - 1)
+        assert(prompt.endsWith("<|im_start|>assistant\n"))
         assert(prompt.contains("So send it on Friday."))
+        // ChatML, not Gemma — the wrong markers are as bad as none.
+        assert(!prompt.contains("<start_of_turn>"))
     }
 
     @Test
@@ -134,7 +136,7 @@ class TranscriptCleanupTest {
         val original = "send it on friday"
         assertEquals(
             "Send it on Friday.",
-            TranscriptCleanup.accept(original, "Send it on Friday.<end_of_turn>"),
+            TranscriptCleanup.accept(original, "Send it on Friday.<|im_end|>"),
         )
     }
 

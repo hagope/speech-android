@@ -10,12 +10,12 @@ import audio.soniqo.speech.llm.FunctionGemmaPrompt
  * carry the same content words as the raw transcript, so anything that drifts
  * is a model failure rather than a better sentence.
  *
- * The guard matters more than the prompt here. The only model currently
- * downloadable is FunctionGemma 270M, which is fine-tuned to emit tool calls,
- * so asking it for prose is off-distribution: it can return call syntax, an
- * empty string, or an invented sentence. Any of those reaching the user's text
+ * The guard matters more than the prompt here. Cleanup runs on a small
+ * instruction-tuned model, which can return an empty string, an answer to the
+ * dictation, or an invented sentence. Any of those reaching the user's text
  * field would be worse than no cleanup at all, so [accept] falls back to the
- * original transcript whenever the candidate looks wrong.
+ * original transcript whenever the candidate looks wrong. The tool-call check
+ * survives from the FunctionGemma prototype and is cheap to keep.
  */
 object TranscriptCleanup {
 
@@ -33,17 +33,12 @@ object TranscriptCleanup {
     /** Why a candidate was rejected — surfaced by the setup screen's test. */
     data class Verdict(val text: String, val accepted: Boolean, val reason: String)
 
-    /** The instruction, without chat-template scaffolding. */
-    internal fun instructions(transcript: String): String =
-        "Remove filler words and fix punctuation. Reply with the corrected " +
-            "sentence only.\n\n$transcript"
-
     /**
      * Worked examples, as real conversation turns.
      *
-     * A 270M model follows demonstrations far more reliably than instructions,
-     * especially negative ones ("do not explain"). Showing the transformation
-     * twice is worth more than any amount of prose telling it what not to do.
+     * A model this small follows demonstrations far more reliably than
+     * instructions, especially negative ones ("do not explain"). Showing the
+     * transformation twice is worth more than prose telling it what not to do.
      */
     private val EXAMPLES = listOf(
         "um so send it uh on friday" to "So send it on Friday.",
@@ -52,23 +47,34 @@ object TranscriptCleanup {
     )
 
     /**
-     * Full prompt including the Gemma turn structure.
+     * Full prompt including the model's turn structure.
      *
      * litertlm 0.14.0 does not apply a chat template of its own, so an
      * untemplated prompt leaves an instruction-tuned model completing text
-     * rather than answering — which is exactly the failure this had.
+     * rather than answering — which is exactly the failure this had. The
+     * markers must match the model: SmolLM2 is ChatML, so Gemma's
+     * `<start_of_turn>` would be as wrong as no template at all.
      */
     fun buildPrompt(transcript: String): String = buildString {
-        EXAMPLES.forEachIndexed { index, (input, output) ->
-            // The instruction rides on the first turn only; repeating it each
-            // time competes with the pattern the examples are establishing.
-            val userTurn = if (index == 0) instructions(input) else input
-            append("<start_of_turn>user\n$userTurn<end_of_turn>\n")
-            append("<start_of_turn>model\n$output<end_of_turn>\n")
+        append("$SYSTEM_START\n${SYSTEM_PROMPT}$TURN_END\n")
+        EXAMPLES.forEach { (input, output) ->
+            append("$USER_START\n$input$TURN_END\n")
+            append("$MODEL_START\n$output$TURN_END\n")
         }
-        append("<start_of_turn>user\n$transcript<end_of_turn>\n")
-        append("<start_of_turn>model\n")
+        append("$USER_START\n$transcript$TURN_END\n")
+        append("$MODEL_START\n")
     }
+
+    // ChatML, as used by SmolLM2.
+    private const val SYSTEM_START = "<|im_start|>system"
+    private const val USER_START = "<|im_start|>user"
+    private const val MODEL_START = "<|im_start|>assistant"
+    private const val TURN_END = "<|im_end|>"
+
+    private const val SYSTEM_PROMPT =
+        "You clean up dictated text. Remove filler words such as \"um\" and " +
+            "\"uh\", fix punctuation and capitalization, and keep every other " +
+            "word exactly as it is. Reply with the corrected text only."
 
     /**
      * Decide what to insert: the cleaned [candidate] when it looks like a
@@ -125,10 +131,15 @@ object TranscriptCleanup {
     internal fun stripWrappers(raw: String): String {
         var text = raw
 
-        // litertlm returns raw decoded text, so Gemma control tokens can come
-        // back with it. Cut at the first turn boundary — anything past it is
-        // the model starting a new turn, not part of the answer.
-        for (token in listOf("<end_of_turn>", "<start_of_turn>", "<eos>")) {
+        // litertlm returns raw decoded text, so control tokens can come back
+        // with it. Cut at the first turn boundary — anything past it is the
+        // model starting a new turn, not part of the answer. Both ChatML and
+        // Gemma markers are listed so a model swap cannot silently regress.
+        val turnMarkers = listOf(
+            "<|im_end|>", "<|im_start|>", "<|endoftext|>",
+            "<end_of_turn>", "<start_of_turn>", "<eos>",
+        )
+        for (token in turnMarkers) {
             val at = text.indexOf(token)
             if (at >= 0) text = text.substring(0, at)
         }

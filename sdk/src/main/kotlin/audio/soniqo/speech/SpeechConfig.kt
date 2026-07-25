@@ -29,6 +29,15 @@ enum class TtsModel(internal val nativeId: Int) {
 enum class LlmModel {
     FUNCTIONGEMMA,
     FUNCTIONGEMMA_CONTROL_LORA,
+
+    /**
+     * Instruction-tuned SmolLM2 360M, published by litert-community under
+     * Apache-2.0. Tuned to follow instructions rather than emit tool calls,
+     * which is what text rewriting needs. Chosen over Gemma 3 270M IT because
+     * the Gemma LiteRT bundles are license-gated and cannot be fetched without
+     * a HuggingFace token.
+     */
+    SMOLLM2_360M_IT,
 }
 
 internal val TtsModel.isKokoro: Boolean

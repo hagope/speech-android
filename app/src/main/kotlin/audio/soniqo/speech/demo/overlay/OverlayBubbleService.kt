@@ -686,9 +686,9 @@ class OverlayBubbleService : Service() {
         cleanupStatus = "downloading…"
         scope.launch(Dispatchers.Default) {
             try {
-                ModelManager.ensureLlmModels(applicationContext, LlmModel.FUNCTIONGEMMA)
+                ModelManager.ensureLlmModels(applicationContext, CLEANUP_MODEL)
                 cleanupStatus = "loading model…"
-                val path = ModelManager.llmModelFile(applicationContext, LlmModel.FUNCTIONGEMMA)
+                val path = ModelManager.llmModelFile(applicationContext, CLEANUP_MODEL)
                 val runtime = LiteRtCleanupRuntime(path)
                 runtime.initialize()
                 cleanupRuntime = runtime
@@ -939,6 +939,13 @@ class OverlayBubbleService : Service() {
         private const val DRAIN_QUIET_MS = 400L
         private const val DRAIN_CAP_MS = 2500L
         private val STT_MODEL = SttModel.PARAKEET
+
+        /**
+         * Instruction-tuned rather than tool-call tuned. FunctionGemma is a
+         * similar size but fine-tuned to emit call syntax, which made it a
+         * poor fit for rewriting prose.
+         */
+        private val CLEANUP_MODEL = LlmModel.SMOLLM2_360M_IT
 
         const val ACTION_STOP = "audio.soniqo.speech.demo.overlay.STOP"
 
