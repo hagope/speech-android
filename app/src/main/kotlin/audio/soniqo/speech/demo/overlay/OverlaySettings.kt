@@ -23,6 +23,8 @@ object OverlaySettings {
 
     private const val PREFS = "voice_overlay"
     private const val KEY_PAUSE = "pause_tolerance_sec"
+    private const val KEY_BUBBLE_X = "bubble_x"
+    private const val KEY_BUBBLE_Y = "bubble_y"
 
     /** Number of discrete slider positions between min and max, inclusive. */
     val steps: Int = ((MAX_PAUSE_SEC - MIN_PAUSE_SEC) / STEP_SEC).roundToInt()
@@ -60,6 +62,33 @@ object OverlaySettings {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putFloat(KEY_PAUSE, clampPause(seconds))
+            .apply()
+    }
+
+    /** Nothing saved yet — the caller picks a starting corner. */
+    const val UNSET_POSITION = Int.MIN_VALUE
+
+    /**
+     * Where the user left the bubble, in window coordinates.
+     *
+     * Stored as the position they dragged it to, not where it was last drawn:
+     * the window resizes as the state changes, so the drawn position is
+     * sometimes clamped inward and would drift a little further each time if
+     * it were saved back.
+     */
+    fun bubblePosition(context: Context): Pair<Int, Int> {
+        val prefs = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_BUBBLE_X, UNSET_POSITION) to
+            prefs.getInt(KEY_BUBBLE_Y, UNSET_POSITION)
+    }
+
+    fun setBubblePosition(context: Context, x: Int, y: Int) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_BUBBLE_X, x)
+            .putInt(KEY_BUBBLE_Y, y)
             .apply()
     }
 

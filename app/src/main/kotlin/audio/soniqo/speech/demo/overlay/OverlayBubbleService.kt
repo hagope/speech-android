@@ -1,7 +1,6 @@
 package audio.soniqo.speech.demo.overlay
 
 import android.Manifest
-import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -80,14 +79,15 @@ class OverlayBubbleService : Service() {
     private lateinit var cancelPill: TextView
     private lateinit var micDot: GradientDrawable
     private lateinit var busyBubble: FrameLayout
-    private var snapAnimator: ValueAnimator? = null
 
     /**
-     * Which edge the bubble is pinned to; the anchor that survives resizing.
-     * Right by default — it sits under the thumb for most right-handed use,
-     * and away from the back gesture on the left edge.
+     * Where the user put the bubble. The window resizes as the state changes,
+     * so the drawn position is sometimes clamped inward; keeping the intended
+     * position separately is what lets it return there when the window shrinks
+     * back, instead of creeping a little further each time.
      */
-    private var dockedRight = true
+    private var anchorX = 0
+    private var anchorY = 0
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -147,7 +147,6 @@ class OverlayBubbleService : Service() {
     override fun onDestroy() {
         running = false
         if (liveInstance === this) liveInstance = null
-        snapAnimator?.cancel()
         stopMicrophone()
         finalizeJob?.cancel()
         scope.cancel()
@@ -238,10 +237,14 @@ class OverlayBubbleService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // Start at the right edge rather than sliding there on first
-            // layout; applyDock corrects the exact offset once measured.
-            x = screenBounds().first - dp(56)
-            y = dp(240)
+            val (savedX, savedY) = OverlaySettings.bubblePosition(this@OverlayBubbleService)
+            // First run starts at the right edge — under the thumb for most
+            // right-handed use, and clear of the left-edge back gesture.
+            anchorX = if (savedX != OverlaySettings.UNSET_POSITION) savedX
+                else screenBounds().first - dp(56)
+            anchorY = if (savedY != OverlaySettings.UNSET_POSITION) savedY else dp(240)
+            x = anchorX
+            y = anchorY
         }
 
         micButton.setOnTouchListener(DragTouchListener { startRecording() })
@@ -323,7 +326,7 @@ class OverlayBubbleService : Service() {
                 recordingRow.visibility = View.GONE
             }
         }
-        applyDock()
+        applyAnchor()
     }
 
     /**
@@ -334,45 +337,25 @@ class OverlayBubbleService : Service() {
      * expand inward and land back exactly where it started — clamping alone
      * shifted a right-docked bubble left and never moved it back.
      */
-    private fun applyDock(animate: Boolean = false) {
+    private fun applyAnchor() {
         bubble.post {
             if (!bubble.isAttachedToWindow) return@post
             val (screenW, screenH) = screenBounds()
-            val targetX = if (dockedRight) {
-                (screenW - bubble.width).coerceAtLeast(0)
-            } else {
-                0
-            }
-            val targetY = layoutParams.y
-                .coerceIn(0, (screenH - bubble.height).coerceAtLeast(0))
-            if (animate) moveAnimated(targetX, targetY) else moveNow(targetX, targetY)
+            // Clamp for drawing only — the anchor itself is left alone, so
+            // growing into the stop/cancel row and shrinking back returns the
+            // bubble to exactly where it was put.
+            moveNow(
+                anchorX.coerceIn(0, (screenW - bubble.width).coerceAtLeast(0)),
+                anchorY.coerceIn(0, (screenH - bubble.height).coerceAtLeast(0)),
+            )
         }
     }
 
     private fun moveNow(x: Int, y: Int) {
-        snapAnimator?.cancel()
         if (x == layoutParams.x && y == layoutParams.y) return
         layoutParams.x = x
         layoutParams.y = y
         updateLayout()
-    }
-
-    /** Short glide to the docked edge after a drag. */
-    private fun moveAnimated(x: Int, y: Int) {
-        snapAnimator?.cancel()
-        val startX = layoutParams.x
-        val startY = layoutParams.y
-        if (x == startX && y == startY) return
-        snapAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = SNAP_DURATION_MS
-            addUpdateListener { anim ->
-                val f = anim.animatedFraction
-                layoutParams.x = (startX + (x - startX) * f).toInt()
-                layoutParams.y = (startY + (y - startY) * f).toInt()
-                updateLayout()
-            }
-            start()
-        }
     }
 
     private fun updateLayout() {
@@ -428,19 +411,21 @@ class OverlayBubbleService : Service() {
                     }
                     dragging = true
                     val bounds = screenBounds()
-                    layoutParams.x = (startX + dx)
+                    anchorX = (startX + dx)
                         .coerceIn(0, (bounds.first - bubble.width).coerceAtLeast(0))
-                    layoutParams.y = (startY + dy)
+                    anchorY = (startY + dy)
                         .coerceIn(0, (bounds.second - bubble.height).coerceAtLeast(0))
+                    layoutParams.x = anchorX
+                    layoutParams.y = anchorY
                     updateLayout()
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
                     if (dragging) {
-                        // Snap to whichever edge the bubble's centre is nearer.
-                        val screenW = screenBounds().first
-                        dockedRight = layoutParams.x + bubble.width / 2 > screenW / 2
-                        applyDock(animate = true)
+                        // Left where it was dropped, and remembered, so the
+                        // overlay comes back in the same place next time.
+                        OverlaySettings.setBubblePosition(
+                            this@OverlayBubbleService, anchorX, anchorY)
                     } else {
                         view.performClick()
                         onTap()
@@ -885,7 +870,6 @@ class OverlayBubbleService : Service() {
         private const val BUBBLE_BG = "#1E1E1E"
         private const val BORDER = "#8A8A8A"
         private const val ACCENT = "#4FC3F7"
-        private const val SNAP_DURATION_MS = 160L
         private const val FRAME_SAMPLES = 512
         private const val SAMPLE_RATE = 16000
         /** Pushed on top of the pause tolerance so the VAD reliably trips. */
