@@ -883,8 +883,59 @@ class OverlayBubbleService : Service() {
         partialText = ""
         speechActive = false
         sessionActive = true
-        recordingStartedAt = System.currentTimeMillis()
         record.startRecording()
+
+        if (btDevice == null) {
+            goLive(record, null)
+            return
+        }
+        // Claiming the route only starts the link; it carries no audio for a
+        // second or more afterwards, so going live here clipped the opening
+        // words. Stay in the connecting state until the recorder itself
+        // reports the headset.
+        scope.launch {
+            withContext(Dispatchers.IO) { awaitBluetoothAudio(record, btDevice) }
+            if (state != UiState.CONNECTING) return@launch  // cancelled meanwhile
+            goLive(record, btDevice)
+        }
+    }
+
+    /**
+     * Wait for capture to actually come from [btDevice], then discard a short
+     * warm-up. routedDevice is the platform's own answer for where audio is
+     * coming from, so it flips only once the link is really carrying it.
+     */
+    private fun awaitBluetoothAudio(record: AudioRecord, btDevice: AudioDeviceInfo) {
+        val deadline = System.currentTimeMillis() + BT_ROUTE_TIMEOUT_MS
+        var routed = false
+        while (System.currentTimeMillis() < deadline) {
+            if (record.routedDevice?.type == btDevice.type) {
+                routed = true
+                break
+            }
+            Thread.sleep(50)
+        }
+        if (!routed) {
+            Log.w(TAG, "Bluetooth route never confirmed; going live anyway")
+        }
+
+        // The first frames after the link settles are silence or artefacts.
+        // Reading them here keeps them out of the utterance.
+        val scratch = FloatArray(FRAME_SAMPLES)
+        val until = System.currentTimeMillis() + BT_WARMUP_MS
+        while (System.currentTimeMillis() < until) {
+            try {
+                record.read(scratch, 0, scratch.size, AudioRecord.READ_BLOCKING)
+            } catch (_: IllegalStateException) {
+                return
+            }
+        }
+    }
+
+    /** Start feeding the pipeline and show the stop/cancel buttons. */
+    private fun goLive(record: AudioRecord, btDevice: AudioDeviceInfo?) {
+        recordingStartedAt = System.currentTimeMillis()
+
         // Ground truth: whatever the platform actually routed us to, which is
         // not always what was asked for.
         val routed = record.routedDevice
@@ -897,6 +948,7 @@ class OverlayBubbleService : Service() {
         if (btDevice != null && routed != null && routed.type != btDevice.type) {
             toast("Bluetooth not used — recording from ${BluetoothMic.typeName(routed.type)}")
         }
+
         recording = true
         setState(UiState.RECORDING)
         setStatus("listening…")
@@ -1151,6 +1203,10 @@ class OverlayBubbleService : Service() {
         private const val POLISH = "#FFB300"
         /** Grey, for the wait before the mic is live. */
         private const val CONNECTING = "#BBBBBB"
+        /** How long to wait for capture to actually reach the headset. */
+        private const val BT_ROUTE_TIMEOUT_MS = 4000L
+        /** Discarded once routed: the first frames are silence. */
+        private const val BT_WARMUP_MS = 250L
         private const val FRAME_SAMPLES = 512
         private const val SAMPLE_RATE = 16000
         /** Pushed on top of the pause tolerance so the VAD reliably trips. */
